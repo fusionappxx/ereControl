@@ -1,0 +1,329 @@
+{
+  "entities": {
+    "receiptItem": {
+      "title": "ReceiptItem",
+      "description": "A single scanned or manually created grocery item line",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "number"
+        },
+        "price": {
+          "type": "number"
+        },
+        "category": {
+          "type": "string"
+        },
+        "purchaseDate": {
+          "type": "string"
+        },
+        "storeName": {
+          "type": "string"
+        },
+        "invoiceNumber": {
+          "type": "string"
+        },
+        "isDuplicate": {
+          "type": "boolean"
+        },
+        "customBarcode": {
+          "type": "string"
+        },
+        "customWeightOrVolValue": {
+          "type": "number"
+        },
+        "customWeightOrVolUnit": {
+          "type": "string",
+          "enum": ["g", "kg", "ml", "l", "unit"]
+        }
+      },
+      "required": ["id", "name", "quantity", "price", "category", "purchaseDate", "storeName"]
+    },
+    "categoriesConfig": {
+      "title": "CategoriesConfig",
+      "description": "Shared categories list",
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "array"
+        },
+        "mappings": {
+          "type": "object"
+        }
+      },
+      "required": ["list"]
+    },
+    "rulesConfig": {
+      "title": "RulesConfig",
+      "description": "Item-to-category dynamic custom associations rules mapping",
+      "type": "object",
+      "properties": {
+        "mapping": {
+          "type": "object"
+        }
+      },
+      "required": ["mapping"]
+    },
+    "fixedExpense": {
+      "title": "FixedExpense",
+      "description": "A recurring operational cost of the bakery kitchen",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "month": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "month", "value"]
+    },
+    "recipeIngredient": {
+      "title": "RecipeIngredient",
+      "description": "An ingredient slice used in a recipe sheet",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "price": {
+          "type": "number"
+        }
+      },
+      "required": ["id", "name", "quantity", "unit", "price"]
+    },
+    "recipe": {
+      "title": "Recipe",
+      "description": "A recipe costing technical sheet with dynamic allocations",
+      "type": "object",
+      "properties": {
+        "recipeName": {
+          "type": "string"
+        },
+        "ingredients": {
+          "type": "array"
+        },
+        "portions": {
+          "type": "number"
+        },
+        "markup": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": ["recipeName", "ingredients", "portions", "markup"]
+    },
+    "productionCosts": {
+      "title": "ProductionCosts",
+      "description": "Global direct utility parameters",
+      "type": "object",
+      "properties": {
+        "water": {
+          "type": "number"
+        },
+        "electricity": {
+          "type": "number"
+        },
+        "gas": {
+          "type": "number"
+        },
+        "electricity2": {
+          "type": "number"
+        }
+      },
+      "required": ["water", "electricity", "gas", "electricity2"]
+    },
+    "inventorySettings": {
+      "title": "InventorySettings",
+      "description": "Custom subset of categories tracked in stock reports",
+      "type": "object",
+      "properties": {
+        "categories": {
+          "type": "array"
+        }
+      },
+      "required": ["categories"]
+    },
+    "inventoryReport": {
+      "title": "InventoryReport",
+      "description": "A saved stock count report with target item quantities",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "categories": {
+          "type": "array"
+        },
+        "items": {
+          "type": "array"
+        }
+      },
+      "required": ["id", "createdAt", "categories", "items"]
+    },
+    "storeConfig": {
+      "title": "StoreConfig",
+      "description": "Store metadata settings and general parameters",
+      "type": "object",
+      "properties": {
+        "activeStoreId": {
+          "type": "string"
+        },
+        "stores": {
+          "type": "array"
+        },
+        "storeName": {
+          "type": "string"
+        },
+        "taxId": {
+          "type": "string"
+        },
+        "defaultTaxPercent": {
+          "type": "number"
+        },
+        "monthlyTargetRevenue": {
+          "type": "number"
+        }
+      }
+    },
+    "salesLog": {
+      "title": "SalesLog",
+      "description": "A single sale transaction log",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "saleDate": {
+          "type": "string"
+        },
+        "recipeId": {
+          "type": "string"
+        },
+        "recipeName": {
+          "type": "string"
+        },
+        "portionsSold": {
+          "type": "number"
+        },
+        "channelName": {
+          "type": "string"
+        },
+        "taxApplied": {
+          "type": "number"
+        },
+        "salePrice": {
+          "type": "number"
+        },
+        "totalPrice": {
+          "type": "number"
+        },
+        "rawCost": {
+          "type": "number"
+        },
+        "netProfit": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "saleDate", "recipeId", "recipeName", "portionsSold", "channelName", "taxApplied", "salePrice", "totalPrice", "rawCost", "netProfit", "createdAt"]
+    },
+    "channelMatrix": {
+      "title": "ChannelMatrix",
+      "description": "Daily channels sales breakdown matrix",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "storeId": {
+          "type": "string"
+        },
+        "month": {
+          "type": "string"
+        },
+        "salesData": {
+          "type": "object"
+        }
+      },
+      "required": ["id", "storeId", "month", "salesData"]
+    }
+  },
+  "firestore": {
+    "/channel_matrix/{matrixId}": {
+      "schema": "channelMatrix",
+      "description": "Daily channels sales breakdown matrix"
+    },
+    "/items/{itemId}": {
+      "schema": "receiptItem",
+      "description": "Global, collaborative spreadsheet inventory items list"
+    },
+    "/configs/categories": {
+      "schema": "categoriesConfig",
+      "description": "Global custom list of grocery category names"
+    },
+    "/configs/rules": {
+      "schema": "rulesConfig",
+      "description": "Global, collaborative dynamic recognition mapping rules"
+    },
+    "/fixed_expenses/{expenseId}": {
+      "schema": "fixedExpense",
+      "description": "Individual monthly fixed expenses"
+    },
+    "/recipes/{recipeId}": {
+      "schema": "recipe",
+      "description": "Dynamic formula and costing sheets"
+    },
+    "/settings/production_costs": {
+      "schema": "productionCosts",
+      "description": "Settings containing direct manufacturing utility values"
+    },
+    "/settings/inventory": {
+      "schema": "inventorySettings",
+      "description": "Custom subset of categories tracked in stock reports"
+    },
+    "/settings/store_config": {
+      "schema": "storeConfig",
+      "description": "Store name, tax ID, monthly revenue targets"
+    },
+    "/sales_logs/{saleId}": {
+      "schema": "salesLog",
+      "description": "Individual daily sales record log entries"
+    },
+    "/inventory_reports/{reportId}": {
+      "schema": "inventoryReport",
+      "description": "Saved historic stock check sheets"
+    }
+  }
+}

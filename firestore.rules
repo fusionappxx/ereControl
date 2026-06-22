@@ -1,0 +1,162 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Utility Validation Primitives
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function isValidReceiptItem(data) {
+      return data.keys().hasAll(['id', 'name', 'quantity', 'price', 'category', 'purchaseDate', 'storeName'])
+        && data.keys().size() <= 13
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 200
+        && data.quantity is number
+        && data.price is number
+        && data.category is string && data.category.size() <= 100
+        && data.purchaseDate is string && data.purchaseDate.size() <= 50
+        && data.storeName is string && data.storeName.size() <= 200
+        && (!data.keys().hasAny(['invoiceNumber']) || data.invoiceNumber is string)
+        && (!data.keys().hasAny(['customBarcode']) || data.customBarcode is string)
+        && (!data.keys().hasAny(['customWeightOrVolValue']) || data.customWeightOrVolValue is number)
+        && (!data.keys().hasAny(['customWeightOrVolUnit']) || (data.customWeightOrVolUnit is string && (data.customWeightOrVolUnit == 'g' || data.customWeightOrVolUnit == 'kg' || data.customWeightOrVolUnit == 'ml' || data.customWeightOrVolUnit == 'l' || data.customWeightOrVolUnit == 'unit')));
+    }
+
+    function isValidCategoriesConfig(data) {
+      return data.keys().hasAll(['list'])
+        && data.keys().size() <= 2
+        && data.list is list
+        && data.list.size() <= 150
+        && (!data.keys().hasAny(['mappings']) || data.mappings is map);
+    }
+
+    function isValidRulesConfig(data) {
+      return data.keys().hasAll(['mapping'])
+        && data.keys().size() == 1
+        && data.mapping is map;
+    }
+
+    function isValidFixedExpense(data) {
+      return data.keys().hasAll(['name', 'month', 'value'])
+        && data.keys().size() <= 5
+        && data.name is string && data.name.size() <= 200
+        && data.month is string && data.month.size() <= 50
+        && data.value is number;
+    }
+
+    function isValidRecipe(data) {
+      return data.keys().hasAll(['recipeName', 'ingredients', 'portions', 'markup'])
+        && data.keys().size() <= 6
+        && data.recipeName is string && data.recipeName.size() <= 200
+        && data.ingredients is list
+        && data.portions is number
+        && data.markup is number;
+    }
+
+    function isValidProductionCosts(data) {
+      return data.keys().hasAll(['water', 'electricity', 'gas', 'electricity2'])
+        && data.keys().size() <= 4
+        && data.water is number
+        && data.electricity is number
+        && data.gas is number
+        && data.electricity2 is number;
+    }
+
+    function isValidInventorySettings(data) {
+      return data.keys().hasAll(['categories'])
+        && data.keys().size() <= 2
+        && data.categories is list;
+    }
+
+    function isValidInventoryReport(data) {
+      return data.keys().hasAll(['id', 'createdAt', 'categories', 'items'])
+        && data.keys().size() <= 5
+        && data.id is string
+        && data.createdAt is string
+        && data.categories is list
+        && data.items is list;
+    }
+
+    function isValidStoreConfig(data) {
+      return data.keys().hasAll(['storeName', 'taxId', 'defaultTaxPercent', 'monthlyTargetRevenue'])
+        || (data.keys().hasAll(['activeStoreId', 'stores']) && data.stores is list);
+    }
+
+    function isValidSalesLog(data) {
+      return data.keys().hasAll(['id', 'saleDate', 'recipeId', 'recipeName', 'portionsSold', 'channelName', 'taxApplied', 'salePrice', 'totalPrice', 'rawCost', 'netProfit', 'createdAt'])
+        && data.keys().size() <= 12
+        && data.id is string
+        && data.saleDate is string
+        && data.recipeId is string
+        && data.recipeName is string
+        && data.portionsSold is number
+        && data.channelName is string
+        && data.taxApplied is number
+        && data.salePrice is number
+        && data.totalPrice is number
+        && data.rawCost is number
+        && data.netProfit is number
+        && data.createdAt is string;
+    }
+
+    // Match Rules
+    match /items/{itemId} {
+      allow get: if isValidId(itemId);
+      allow list: if true;
+      allow create: if isValidId(itemId) && isValidReceiptItem(request.resource.data);
+      allow update: if isValidId(itemId) && isValidReceiptItem(request.resource.data);
+      allow delete: if isValidId(itemId);
+    }
+
+    match /configs/categories {
+      allow get: if true;
+      allow write: if isValidCategoriesConfig(request.resource.data);
+    }
+
+    match /configs/rules {
+      allow get: if true;
+      allow write: if isValidRulesConfig(request.resource.data);
+    }
+
+    match /product_costings/{productKey} {
+      allow read, write: if true;
+    }
+
+    match /fixed_expenses/{expenseId} {
+      allow read, delete: if true;
+      allow create, update: if isValidFixedExpense(request.resource.data);
+    }
+
+    match /recipes/{recipeId} {
+      allow read, delete: if true;
+      allow create, update: if isValidRecipe(request.resource.data);
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if (settingId == "production_costs" && isValidProductionCosts(request.resource.data))
+                   || (settingId == "inventory" && isValidInventorySettings(request.resource.data))
+                   || (settingId == "store_config" && isValidStoreConfig(request.resource.data));
+    }
+
+    match /sales_logs/{saleId} {
+      allow read, delete: if true;
+      allow create, update: if isValidId(saleId) && isValidSalesLog(request.resource.data);
+    }
+
+    match /inventory_reports/{reportId} {
+      allow read, delete: if true;
+      allow create, update: if isValidId(reportId) && isValidInventoryReport(request.resource.data);
+    }
+
+    match /channel_matrix/{matrixId} {
+      allow read, write: if true;
+    }
+  }
+}
