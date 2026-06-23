@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -31,22 +31,22 @@ function generateQuotaFallbackNfce(decodedMetadata: any) {
   const isNfe55 = modelType.includes("55");
   const prefix = isNfe55 ? "[NF-e 55]" : "[NFC-e 65]";
   
-  const storeNames = ["Supermercados Pão de Açúcar", "Carrefour Express", "Supermercados Zaffari", "Zaffari Bourbon", "Preço Filho", "Mambo Supermercados", "Supermercados Extra"];
+  const storeNames = ["Supermercados PÃ£o de AÃ§Ãºcar", "Carrefour Express", "Supermercados Zaffari", "Zaffari Bourbon", "PreÃ§o Filho", "Mambo Supermercados", "Supermercados Extra"];
   const selectedStore = storeNames[Math.floor(Math.random() * storeNames.length)];
   
   const purchaseDate = decodedMetadata?.date || new Date().toISOString().split("T")[0];
   
   const possibleItems = [
     { name: "Arroz Integral Camil 1kg", price: 7.90, category: "Pantry" },
-    { name: "Feijão Carioca Kicaldo 1kg", price: 8.50, category: "Pantry" },
-    { name: "Pão de Forma Wickbold Tradicional", price: 9.80, category: "Bakery" },
-    { name: "Suco de Uva Integral Aliança 1L", price: 14.50, category: "Beverages" },
+    { name: "FeijÃ£o Carioca Kicaldo 1kg", price: 8.50, category: "Pantry" },
+    { name: "PÃ£o de Forma Wickbold Tradicional", price: 9.80, category: "Bakery" },
+    { name: "Suco de Uva Integral AlianÃ§a 1L", price: 14.50, category: "Beverages" },
     { name: "Azeite de Oliva Extra Virgem Gallo 500ml", price: 34.90, category: "Pantry" },
-    { name: "Iogurte Natural Grego Nestlé 400g", price: 7.20, category: "Dairy" },
+    { name: "Iogurte Natural Grego NestlÃ© 400g", price: 7.20, category: "Dairy" },
     { name: "Leite UHT Integral Paulista 1L", price: 5.40, category: "Dairy" },
-    { name: "Café Torrado e Moído Melitta 500g", price: 21.90, category: "Beverages" },
-    { name: "Sabonete Líquido Dove Nutrição 250ml", price: 11.20, category: "Personal Care" },
-    { name: "Papel Higiênico Neve Leve 12 Unidades", price: 18.90, category: "Household" }
+    { name: "CafÃ© Torrado e MoÃ­do Melitta 500g", price: 21.90, category: "Beverages" },
+    { name: "Sabonete LÃ­quido Dove NutriÃ§Ã£o 250ml", price: 11.20, category: "Personal Care" },
+    { name: "Papel HigiÃªnico Neve Leve 12 Unidades", price: 18.90, category: "Household" }
   ];
   
   // Pick random 4 to 6 items
@@ -71,7 +71,7 @@ function generateQuotaFallbackNfce(decodedMetadata: any) {
     invoiceNumber,
     items: itemsList,
     quotaLimitActive: true,
-    message: "⚠️ API Quota Limit Exceeded (429). Processed using local fast metadata reader & realistic mock simulation schema!"
+    message: "âš ï¸ API Quota Limit Exceeded (429). Processed using local fast metadata reader & realistic mock simulation schema!"
   };
 }
 
@@ -117,7 +117,7 @@ function generateQuotaFallbackScanReceipt() {
     invoiceNumber,
     items: itemsList,
     quotaLimitActive: true,
-    message: "⚠️ API Quota Limit Exceeded (429). Simulated receipt generated so you can preview spreadsheet parsing, analytics, and category splits!"
+    message: "âš ï¸ API Quota Limit Exceeded (429). Simulated receipt generated so you can preview spreadsheet parsing, analytics, and category splits!"
   };
 }
 
@@ -206,7 +206,7 @@ function logAmoTransaction(
     }
 
     if (errorDetails) {
-      logChunk += `💥 ERROR: ${errorDetails.message || JSON.stringify(errorDetails)}\n`;
+      logChunk += `ðŸ’¥ ERROR: ${errorDetails.message || JSON.stringify(errorDetails)}\n`;
     }
 
     logChunk += `------------------------------------------------------------------------\n\n`;
@@ -235,6 +235,192 @@ async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 8000
     }
     throw err;
   }
+}
+
+type AmoMappedOrder = {
+  id: string;
+  channel: string;
+  customerName: string;
+  time: string;
+  items: string;
+  total: number;
+  status: "pending" | "preparing" | "delivering" | "completed" | "cancelled";
+};
+
+function mapAmoLastEventToStatus(lastEvent: string): AmoMappedOrder["status"] {
+  const ev = (lastEvent || "").toUpperCase();
+  if (["CANCELLED", "CANCELED", "REJECTED"].includes(ev)) return "cancelled";
+  if (["CONCLUDED", "DELIVERED", "PICKED_UP", "COMPLETED", "FINISHED"].includes(ev)) return "completed";
+  if (["DISPATCHED", "OUT_FOR_DELIVERY", "PICKUP_READY", "READY_FOR_PICKUP", "DELIVERING"].includes(ev)) {
+    return "delivering";
+  }
+  if (["CONFIRMED", "PREPARATION_STARTED", "PREPARING", "IN_PREPARATION", "PREPARATION"].includes(ev)) {
+    return "preparing";
+  }
+  return "pending";
+}
+
+function mapAmoOrderDocToAppOrder(orderData: any): AmoMappedOrder {
+  const displayId = orderData.displayId ?? orderData.id;
+  const customerName = orderData.customer?.name || "AMO Customer";
+  const totalAmount = parseFloat(
+    String(orderData.total?.orderAmount?.value ?? orderData.total?.orderAmount ?? orderData.total ?? 0)
+  );
+
+  let itemsStr = "";
+  if (Array.isArray(orderData.items) && orderData.items.length > 0) {
+    itemsStr = orderData.items.map((i: any) => `${i.quantity || 1}x ${i.name}`).join(", ");
+  } else {
+    itemsStr = `Order #${displayId}`;
+  }
+
+  return {
+    id: `AM-${displayId}`,
+    channel: "amo",
+    customerName,
+    time: new Date(orderData.createdAt || Date.now()).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit"
+    }),
+    items: itemsStr,
+    total: totalAmount,
+    status: mapAmoLastEventToStatus(orderData.lastEvent || "")
+  };
+}
+
+function shouldValidateAmoMerchantId(restaurantId: string): boolean {
+  const id = (restaurantId || "").trim();
+  if (!id) return false;
+  if (/^AMO-/i.test(id)) return false;
+  return /^[a-f0-9]{24}$/i.test(id);
+}
+
+async function requestAmoAccessToken(
+  baseUrl: string,
+  clientId: string,
+  clientSecret: string,
+  logAction: string
+): Promise<{ accessToken: string } | { error: string; statusCode?: number }> {
+  const oauthParams = new URLSearchParams();
+  oauthParams.append("grant_type", "client_credentials");
+  oauthParams.append("client_id", clientId);
+  oauthParams.append("client_secret", clientSecret);
+
+  const tokenUrl = `${baseUrl}/oauth/token`;
+  const tokenResponse = await fetchWithTimeout(tokenUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Accept": "application/json"
+    },
+    body: oauthParams.toString()
+  }, 7000);
+
+  if (!tokenResponse.ok) {
+    const errBody = await tokenResponse.text();
+    logAmoTransaction(logAction,
+      { url: tokenUrl, method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: oauthParams.toString() },
+      { status: tokenResponse.status, body: errBody }
+    );
+    return {
+      error: `OAuth authentication failed (status ${tokenResponse.status}): ${errBody.substring(0, 150)}`,
+      statusCode: tokenResponse.status
+    };
+  }
+
+  const tokenData: any = await tokenResponse.json();
+  logAmoTransaction(logAction,
+    { url: tokenUrl, method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: oauthParams.toString() },
+    { status: tokenResponse.status, body: tokenData }
+  );
+
+  const accessToken = tokenData.access_token || tokenData.accessToken;
+  if (!accessToken) {
+    return { error: "OAuth handshake completed but no access token was returned." };
+  }
+
+  return { accessToken };
+}
+
+async function fetchAmoRecentOrders(
+  baseUrl: string,
+  accessToken: string,
+  limit = 5,
+  logPrefix = "LIST_ORDERS"
+): Promise<{ orders: AmoMappedOrder[] } | { error: string; statusCode?: number }> {
+  const listUrl = `${baseUrl}/v1/open-delivery/orders?page=1&limit=${limit}`;
+  const listResponse = await fetchWithTimeout(listUrl, {
+    method: "GET",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Accept": "application/json"
+    }
+  }, 8000);
+
+  let listBodyText = "";
+  try {
+    listBodyText = await listResponse.text();
+  } catch (e: any) {
+    listBodyText = "Error reading list response: " + e.message;
+  }
+
+  logAmoTransaction(`${logPrefix}_LIST`,
+    { url: listUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
+    { status: listResponse.status, body: listBodyText }
+  );
+
+  if (!listResponse.ok) {
+    return {
+      error: `Failed to list orders (status ${listResponse.status}): ${listBodyText.substring(0, 150)}`,
+      statusCode: listResponse.status
+    };
+  }
+
+  const listData: any = JSON.parse(listBodyText);
+  const docs: any[] = Array.isArray(listData.docs) ? listData.docs : [];
+
+  const ordersWithItems = await Promise.all(docs.map(async (doc) => {
+    if (Array.isArray(doc.items) && doc.items.length > 0) {
+      return mapAmoOrderDocToAppOrder(doc);
+    }
+
+    try {
+      const detailUrl = `${baseUrl}/v1/open-delivery/orders/${doc.id}`;
+      const detailResponse = await fetchWithTimeout(detailUrl, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Accept": "application/json"
+        }
+      }, 5000);
+
+      let detailBodyText = "";
+      try {
+        detailBodyText = await detailResponse.text();
+      } catch (e: any) {
+        detailBodyText = "Error reading detail response: " + e.message;
+      }
+
+      logAmoTransaction(`${logPrefix}_ORDER_${doc.id}`,
+        { url: detailUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
+        { status: detailResponse.status, body: detailBodyText }
+      );
+
+      if (detailResponse.ok) {
+        return mapAmoOrderDocToAppOrder(JSON.parse(detailBodyText));
+      }
+    } catch (err: any) {
+      logAmoTransaction(`${logPrefix}_ORDER_${doc.id}_FAILED`,
+        { url: `${baseUrl}/v1/open-delivery/orders/${doc.id}`, method: "GET", headers: { "Authorization": `Bearer ${accessToken}` } },
+        undefined,
+        err
+      );
+    }
+
+    return mapAmoOrderDocToAppOrder(doc);
+  }));
+
+  return { orders: ordersWithItems };
 }
 
 async function startServer() {
@@ -399,11 +585,11 @@ async function startServer() {
         "If HTML text is empty/blocked or a direct 44-digit barcode key lookup was requested (fetch status skipped or failed), DO NOT fail or return any text errors. " +
         "Instead, use the decoded metadata (state abbreviation, CNPJ, model type, approximate date) and direct key. " +
         "Since we want to provide a functioning and realistic interactive experience, simulate a realistic grocery receipt containing 4-6 high-quality " +
-        "supermarket items in Portuguese (e.g. 'Arroz Integral 1kg', 'Pão de Forma Wickbold', 'Suco de Uva Integral Aliança 1L', 'Azeite de Oliva Extra Virgem 500ml', 'Iogurte Natural Batavo') " +
+        "supermarket items in Portuguese (e.g. 'Arroz Integral 1kg', 'PÃ£o de Forma Wickbold', 'Suco de Uva Integral AlianÃ§a 1L', 'Azeite de Oliva Extra Virgem 500ml', 'Iogurte Natural Batavo') " +
         "representing a realistic grocery buy of total value around 40 to 125 BRL. " +
         "If model is 'NF-e Model 55 (Electronic Invoice)', prepend '[NF-e 55]' to storeName and '[NF]' to item descriptions. " +
         "If model is 'NFC-e Model 65', prepend '[NFC-e 65]' to storeName and '[NF]' to item descriptions. " +
-        "Add a realistic Brazilian store name (e.g. '[NF-e 55] Supermercados Zaffari' or '[NF-e 55] Pão de Açúcar' depending on region/state). " +
+        "Add a realistic Brazilian store name (e.g. '[NF-e 55] Supermercados Zaffari' or '[NF-e 55] PÃ£o de AÃ§Ãºcar' depending on region/state). " +
         "\n\nSPECIFIC INVOICE LAYOUT & DISCOUNT STRUCTURE RULE:\n" +
         "- On the main item line (after the product name): you will find the quantity, the unit price, and the total value.\n" +
         "- On the line directly below the main item line (starting with 'DISCOUNT' or 'DESCONTO' or 'DESC'): you will find the discount percentage and then the discount amount.\n" +
@@ -535,7 +721,7 @@ async function startServer() {
         return res.json({
           key: "35230501234567890123550010001234561001234567",
           quotaLimitActive: true,
-          message: "⚠️ API Quota Limit Exceeded (429). Using simulated Brazilian fiscal access key to demo parsing flow."
+          message: "âš ï¸ API Quota Limit Exceeded (429). Using simulated Brazilian fiscal access key to demo parsing flow."
         });
       }
       return res.status(500).json({ error: e.message || "Failed to process barcode image." });
@@ -635,7 +821,7 @@ async function startServer() {
       const systemPrompt = 
         "You are an expert grocery OCR and receipt parser.\n\n" +
         "CRITICAL PRIORITIZATION:\n" +
-        "When performing OCR, the absolute FIRST piece of information that you must check, locate, and verify is the invoice number (receipt ID, CNF/COO serial identifier, tax coupon number, transaction code, or bill identifier). Look closely at headers, subheaders, and footer sections for labels like 'NFC-e Nº', 'Invoice #', 'Receipt No.', 'Doc Fiscal', 'COO', 'No.', or similar. Prioritize finding and confirming this field FIRST to ensure duplicate check balances are upheld dynamically.\n\n" +
+        "When performing OCR, the absolute FIRST piece of information that you must check, locate, and verify is the invoice number (receipt ID, CNF/COO serial identifier, tax coupon number, transaction code, or bill identifier). Look closely at headers, subheaders, and footer sections for labels like 'NFC-e NÂº', 'Invoice #', 'Receipt No.', 'Doc Fiscal', 'COO', 'No.', or similar. Prioritize finding and confirming this field FIRST to ensure duplicate check balances are upheld dynamically.\n\n" +
         "Parse the receipt image and exact-match or infer items, " +
         "quantities, prices paid, purchase date, total amount, and grocery categories. " +
         "If some items don't have quantities write 1. Clean the names of the items (e.g., remove tax codes like 'F', 'T' etc.). " +
@@ -706,18 +892,11 @@ async function startServer() {
 
   // =========================================================================
   // SECTION: AMO DELIVERY OPEN DELIVERY STANDARD INTEGRATION
-  // This endpoint acts as a secure backend proxy to check connection with the
-  // AMO API host using the official "Open Delivery" standard.
-  // It handles:
-  // 1. OAuth 2.0 Client Credentials Grant Handshake to fetch the access token.
-  // 2. Querying Open Delivery standard merchant endpoints (`/merchant/v1.0/merchants`)
-  //    to validate active status and bypass client-side CORS policies.
+  // OAuth client_credentials + GET /v1/open-delivery/orders (page + limit).
   // =========================================================================
-   app.post("/api/test-amo-connection", async (req, res) => {
+  app.post("/api/test-amo-connection", async (req, res) => {
     try {
       const { apiBaseUrl, clientId, clientSecret, restaurantId } = req.body || {};
-
-      // Normalizing API Base URL to use the UAT environment if unspecified
       const baseUrl = (apiBaseUrl || "https://api.uat.amo.delivery").trim().replace(/\/$/, "");
 
       if (!clientId || !clientSecret) {
@@ -727,63 +906,21 @@ async function startServer() {
         });
       }
 
-      console.log(`[AMO Open Delivery] Requesting Access Token from auth gateway: ${baseUrl}/oauth/token`);
-
-      // 1. Build form urlencoded request variables for the OAuth2 client credentials grant
-      const oauthParams = new URLSearchParams();
-      oauthParams.append("grant_type", "client_credentials");
-      oauthParams.append("client_id", clientId);
-      oauthParams.append("client_secret", clientSecret);
-
-      const tokenUrl = `${baseUrl}/oauth/token`;
-      const tokenResponse = await fetchWithTimeout(tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Accept": "application/json"
-        },
-        body: oauthParams.toString()
-      }, 7000);
-
-      console.log(`[AMO Open Delivery] OAuth gateway returned status code ${tokenResponse.status}`);
-
-      if (!tokenResponse.ok) {
-        const errBody = await tokenResponse.text();
-        logAmoTransaction("TEST_CONNECTION_OAUTH", 
-          { url: tokenUrl, method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" }, body: oauthParams.toString() },
-          { status: tokenResponse.status, body: errBody }
-        );
+      const tokenResult = await requestAmoAccessToken(baseUrl, clientId, clientSecret, "TEST_CONNECTION_OAUTH");
+      if ("error" in tokenResult) {
         return res.json({
           success: false,
-          statusCode: tokenResponse.status,
-          message: `OAuth authentication failed. Responded with status ${tokenResponse.status}: ${errBody.substring(0, 150)}`
+          statusCode: tokenResult.statusCode,
+          message: tokenResult.error
         });
       }
 
-      const tokenData: any = await tokenResponse.json();
-      logAmoTransaction("TEST_CONNECTION_OAUTH", 
-        { url: tokenUrl, method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" }, body: oauthParams.toString() },
-        { status: tokenResponse.status, body: tokenData }
-      );
+      const { accessToken } = tokenResult;
+      let merchantLabel = "Open Delivery API linked via client credentials.";
 
-      const accessToken = tokenData.access_token || tokenData.accessToken;
-
-      if (!accessToken) {
-        return res.json({
-          success: false,
-          message: "OAuth handshake completed but the remote server returned no access token in response."
-        });
-      }
-
-      // 2. Validate connection by checking the Merchant Endpoint using standard Bearer authorization
-      let isMerchantValid = false;
-      let merchantLabel = "Open Delivery connected";
-      
-      if (restaurantId && restaurantId.trim()) {
+      if (shouldValidateAmoMerchantId(restaurantId || "")) {
         const merchantId = restaurantId.trim();
         const merchantUrl = `${baseUrl}/v1/open-delivery/merchant/${merchantId}`;
-        console.log(`[AMO Open Delivery] Fetching active status of merchant: ${merchantUrl}`);
-
         const merchantResponse = await fetchWithTimeout(merchantUrl, {
           method: "GET",
           headers: {
@@ -792,227 +929,39 @@ async function startServer() {
           }
         }, 5000);
 
-        console.log(`[AMO Open Delivery] Merchant profile endpoint returned status code ${merchantResponse.status}`);
-
-        let merchantBodyText = "";
-        try {
-          const clonedRes = merchantResponse.clone();
-          merchantBodyText = await clonedRes.text();
-        } catch (e: any) {
-          merchantBodyText = "Error reading response body: " + e.message;
-        }
-
-        logAmoTransaction("TEST_CONNECTION_MERCHANT", 
+        const merchantBodyText = await merchantResponse.text();
+        logAmoTransaction("TEST_CONNECTION_MERCHANT",
           { url: merchantUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
           { status: merchantResponse.status, body: merchantBodyText }
         );
 
         if (merchantResponse.ok) {
-          isMerchantValid = true;
-          merchantLabel = `Verified Open Delivery Restaurant ID: ${merchantId}`;
-        } else {
-          if (merchantResponse.status === 404) {
-            return res.json({
-              success: false,
-              statusCode: merchantResponse.status,
-              message: `OAuth valid, but Merchant ID '${merchantId}' does not exist on this gateway.`
-            });
-          }
-          if (merchantResponse.status === 401 || merchantResponse.status === 403) {
-            return res.json({
-              success: false,
-              statusCode: merchantResponse.status,
-              message: `OAuth token was rejected for the merchant '${merchantId}' catalog request (Code ${merchantResponse.status}).`
-            });
-          }
-          // fallback success
-          isMerchantValid = true;
-          merchantLabel = `Linked with access token (Details check returned ${merchantResponse.statusText})`;
-        }
-      } else {
-        // If no generic Restaurant ID is specified, we perform a general list merchants validation
-        const listUrl = `${baseUrl}/v1/open-delivery/merchant`;
-        console.log(`[AMO Open Delivery] Fetching list of authenticated merchants under credentials: ${listUrl}`);
-
-        const listResponse = await fetchWithTimeout(listUrl, {
-          method: "GET",
-          headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Accept": "application/json"
-          }
-        }, 5000);
-
-        let listBodyText = "";
-        try {
-          const clonedList = listResponse.clone();
-          listBodyText = await clonedList.text();
-        } catch (e: any) {
-          listBodyText = "Error reading list: " + e.message;
-        }
-
-        logAmoTransaction("TEST_CONNECTION_MERCHANT_LIST",
-          { url: listUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
-          { status: listResponse.status, body: listBodyText }
-        );
-
-        if (listResponse.ok) {
-          isMerchantValid = true;
-          merchantLabel = "Open Delivery API linked (We recommend adding a specific Restaurant ID to verify catalog status).";
-        } else {
-          isMerchantValid = true;
-          merchantLabel = `OAuth Client Credentials authentication succeeded (List check returned ${listResponse.status}).`;
+          merchantLabel = `Verified merchant: ${merchantId}`;
+        } else if (merchantResponse.status === 404) {
+          return res.json({
+            success: false,
+            statusCode: merchantResponse.status,
+            message: `OAuth valid, but Merchant ID '${merchantId}' was not found. Leave Restaurant ID empty â€” AMO only needs Client ID and Secret.`
+          });
         }
       }
 
-      // If the integration handshake is valid, perform real standard Open Delivery orders polling to retrieve live requests
-      const polledOrders: any[] = [];
-      if (isMerchantValid) {
-        try {
-          const pollUrl = `${baseUrl}/v1/open-delivery/orders/events:poll`;
-          console.log(`[AMO Test Connection Poll] Polling events from: ${pollUrl}`);
-
-          const pollResponse = await fetchWithTimeout(pollUrl, {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${accessToken}`,
-              "Accept": "application/json"
-            }
-          }, 5000);
-
-          let pollBodyText = "";
-          try {
-            const clonedPoll = pollResponse.clone();
-            pollBodyText = await clonedPoll.text();
-          } catch (e: any) {
-            pollBodyText = "Error reading poll body: " + e.message;
-          }
-
-          logAmoTransaction("TEST_CONNECTION_EVENTS_POLL",
-            { url: pollUrl, method: "POST", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
-            { status: pollResponse.status, body: pollBodyText }
-          );
-
-          if (pollResponse.ok && pollResponse.status !== 204) {
-            const events: any = await pollResponse.json();
-            const ackEventIds: string[] = [];
-
-            if (Array.isArray(events) && events.length > 0) {
-              for (const ev of events) {
-                ackEventIds.push(ev.id);
-
-                if (ev.code === "PLC" || ev.code === "placed" || ev.code === "RCV" || ev.code === "received") {
-                  const orderId = ev.orderId;
-                  try {
-                    const orderDetailsUrl = `${baseUrl}/v1/open-delivery/orders/${orderId}`;
-                    console.log(`[AMO Test Connection Poll] Fetching order info for #${orderId}`);
-                    const detailsResponse = await fetchWithTimeout(orderDetailsUrl, {
-                      method: "GET",
-                      headers: {
-                        "Authorization": `Bearer ${accessToken}`,
-                        "Accept": "application/json"
-                      }
-                    }, 5000);
-
-                    let detailsBodyText = "";
-                    try {
-                      const clonedDet = detailsResponse.clone();
-                      detailsBodyText = await clonedDet.text();
-                    } catch (e: any) {
-                      detailsBodyText = "Error reading order details: " + e.message;
-                    }
-
-                    logAmoTransaction(`TEST_CONNECTION_ORDER_DETAILS_${orderId}`,
-                      { url: orderDetailsUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
-                      { status: detailsResponse.status, body: detailsBodyText }
-                    );
-
-                    if (detailsResponse.ok) {
-                      const orderData: any = JSON.parse(detailsBodyText);
-                      const customerName = orderData.customer?.name || "AMO Customer";
-                      const totalAmount = parseFloat(orderData.total?.orderAmount || orderData.total || 0);
-                      
-                      let itemsStr = "";
-                      if (Array.isArray(orderData.items)) {
-                        itemsStr = orderData.items.map((i: any) => `${i.quantity || 1}x ${i.name}`).join(", ");
-                      } else {
-                        itemsStr = "1x AMO Standard Order Bundle";
-                      }
-
-                      polledOrders.push({
-                        id: orderId.startsWith("AM-") ? orderId : `AM-${orderId.substring(0,6)}`,
-                        channel: "amo",
-                        customerName,
-                        time: new Date(orderData.createdAt || Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-                        items: itemsStr,
-                        total: totalAmount,
-                        status: "pending"
-                      });
-                    }
-                  } catch (errDet: any) {
-                    logAmoTransaction(`TEST_CONNECTION_ORDER_DETAILS_${orderId}_FAILED`,
-                      { url: `${baseUrl}/v1/open-delivery/orders/${orderId}`, method: "GET", headers: { "Authorization": `Bearer ${accessToken}` } },
-                      undefined,
-                      errDet
-                    );
-                    console.error("Error fetching detailed order:", errDet.message);
-                  }
-                }
-              }
-
-              if (ackEventIds.length > 0) {
-                const ackUrl = `${baseUrl}/v1/open-delivery/orders/events/acknowledgment`;
-                const ackPayload = ackEventIds.map(id => ({ id }));
-                try {
-                  const ackResponse = await fetchWithTimeout(ackUrl, {
-                    method: "POST",
-                    headers: {
-                      "Authorization": `Bearer ${accessToken}`,
-                      "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify(ackPayload)
-                  }, 4000);
-
-                  let ackBodyText = "";
-                  try {
-                    const clonedAck = ackResponse.clone();
-                    ackBodyText = await clonedAck.text();
-                  } catch {
-                    ackBodyText = "(no body)";
-                  }
-
-                  logAmoTransaction("TEST_CONNECTION_EVENTS_ACK",
-                    { url: ackUrl, method: "POST", headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: ackPayload },
-                    { status: ackResponse.status, body: ackBodyText }
-                  );
-                } catch (errAck: any) {
-                  logAmoTransaction("TEST_CONNECTION_EVENTS_ACK_FAILED",
-                    { url: ackUrl, method: "POST", headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: ackPayload },
-                    undefined,
-                    errAck
-                  );
-                  console.warn("Could not acknowledge polled events during test:", errAck.message);
-                }
-              }
-            }
-          }
-        } catch (pollErr: any) {
-          logAmoTransaction("TEST_CONNECTION_EVENTS_POLL_FAILED",
-            { url: `${baseUrl}/v1/open-delivery/orders/events:poll`, method: "POST", headers: { "Authorization": `Bearer ${accessToken}` } },
-            undefined,
-            pollErr
-          );
-          console.error("Failed to poll events during test connection:", pollErr.message);
-        }
+      const ordersResult = await fetchAmoRecentOrders(baseUrl, accessToken, 5, "TEST_CONNECTION");
+      if ("error" in ordersResult) {
+        return res.json({
+          success: false,
+          statusCode: ordersResult.statusCode,
+          message: ordersResult.error
+        });
       }
 
       return res.json({
         success: true,
         statusCode: 200,
-        message: "Authentication successful and Merchant linked successfully!",
+        message: `Authentication successful. Loaded ${ordersResult.orders.length} recent order(s) from AMO.`,
         merchantInfo: merchantLabel,
-        orders: polledOrders
+        orders: ordersResult.orders
       });
-
     } catch (error: any) {
       logAmoTransaction("TEST_CONNECTION_PIPELINE_ERROR",
         { url: "N/A", method: "POST", body: req.body },
@@ -1028,14 +977,12 @@ async function startServer() {
   });
 
   // =========================================================================
-  // SECTION: AMO DELIVERY OPEN DELIVERY STANDARD POLLING API
-  // This endpoint acts as a secure backend proxy to check/poll live orders 
-  // from the configured AMO API host using the official "Open Delivery" standard.
+  // SECTION: AMO DELIVERY ORDER SYNC API
+  // Returns the latest orders from GET /v1/open-delivery/orders.
   // =========================================================================
   app.post("/api/amo/poll-orders", async (req, res) => {
     try {
-      const { apiBaseUrl, clientId, clientSecret, restaurantId } = req.body || {};
-
+      const { apiBaseUrl, clientId, clientSecret } = req.body || {};
       const baseUrl = (apiBaseUrl || "https://api.uat.amo.delivery").trim().replace(/\/$/, "");
 
       if (!clientId || !clientSecret) {
@@ -1045,200 +992,26 @@ async function startServer() {
         });
       }
 
-      console.log(`[AMO Poll] Requesting Access Token from auth gateway: ${baseUrl}/oauth/token`);
-
-      const oauthParams = new URLSearchParams();
-      oauthParams.append("grant_type", "client_credentials");
-      oauthParams.append("client_id", clientId);
-      oauthParams.append("client_secret", clientSecret);
-
-      const tokenUrl = `${baseUrl}/oauth/token`;
-      const tokenResponse = await fetchWithTimeout(tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Accept": "application/json"
-        },
-        body: oauthParams.toString()
-      }, 7000);
-
-      if (!tokenResponse.ok) {
-        const errText = await tokenResponse.text();
-        logAmoTransaction("POLL_ORDERS_OAUTH",
-          { url: tokenUrl, method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" }, body: oauthParams.toString() },
-          { status: tokenResponse.status, body: errText }
-        );
+      const tokenResult = await requestAmoAccessToken(baseUrl, clientId, clientSecret, "POLL_ORDERS_OAUTH");
+      if ("error" in tokenResult) {
         return res.json({
           success: false,
-          message: `OAuth failed status ${tokenResponse.status}: ${errText.substring(0, 150)}`
+          message: tokenResult.error
         });
       }
 
-      const tokenData: any = await tokenResponse.json();
-      logAmoTransaction("POLL_ORDERS_OAUTH",
-        { url: tokenUrl, method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json" }, body: oauthParams.toString() },
-        { status: tokenResponse.status, body: tokenData }
-      );
-
-      const accessToken = tokenData.access_token || tokenData.accessToken;
-
-      if (!accessToken) {
+      const ordersResult = await fetchAmoRecentOrders(baseUrl, tokenResult.accessToken, 5, "POLL_ORDERS");
+      if ("error" in ordersResult) {
         return res.json({
           success: false,
-          message: "No access token in response."
+          message: ordersResult.error
         });
-      }
-
-      const pollUrl = `${baseUrl}/v1/open-delivery/orders/events:poll`;
-      console.log(`[AMO Poll] Polling events from Open Delivery gateway: ${pollUrl}`);
-
-      const pollResponse = await fetchWithTimeout(pollUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Accept": "application/json"
-        }
-      }, 5000);
-
-      let pollBodyText = "";
-      try {
-        const clonedPoll = pollResponse.clone();
-        pollBodyText = await clonedPoll.text();
-      } catch (e: any) {
-        pollBodyText = "Error reading poll response body: " + e.message;
-      }
-
-      logAmoTransaction("POLL_ORDERS_EVENTS_POLL",
-        { url: pollUrl, method: "POST", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
-        { status: pollResponse.status, body: pollBodyText }
-      );
-
-      if (pollResponse.status === 204) {
-        return res.json({
-          success: true,
-          orders: []
-        });
-      }
-
-      if (!pollResponse.ok) {
-        return res.json({
-          success: false,
-          message: `Poll failed status ${pollResponse.status}: ${pollBodyText.substring(0, 150)}`
-        });
-      }
-
-      const events: any = JSON.parse(pollBodyText);
-      const newOrdersList: any[] = [];
-      const ackEventIds: string[] = [];
-
-      if (Array.isArray(events) && events.length > 0) {
-        for (const ev of events) {
-          ackEventIds.push(ev.id);
-
-          if (ev.code === "PLC" || ev.code === "placed" || ev.code === "RCV" || ev.code === "received") {
-            const orderId = ev.orderId;
-            try {
-              const orderDetailsUrl = `${baseUrl}/v1/open-delivery/orders/${orderId}`;
-              console.log(`[AMO Poll] Fetching order info for order #${orderId}: ${orderDetailsUrl}`);
-
-              const detailsResponse = await fetchWithTimeout(orderDetailsUrl, {
-                method: "GET",
-                headers: {
-                  "Authorization": `Bearer ${accessToken}`,
-                  "Accept": "application/json"
-                }
-              }, 5000);
-
-              let detailsBodyText = "";
-              try {
-                const clonedDet = detailsResponse.clone();
-                detailsBodyText = await clonedDet.text();
-              } catch (e: any) {
-                detailsBodyText = "Error reading details response body: " + e.message;
-              }
-
-              logAmoTransaction(`POLL_ORDERS_ORDER_DETAILS_${orderId}`,
-                { url: orderDetailsUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
-                { status: detailsResponse.status, body: detailsBodyText }
-              );
-
-              if (detailsResponse.ok) {
-                const orderData: any = JSON.parse(detailsBodyText);
-                const customerName = orderData.customer?.name || "AMO Customer";
-                const totalAmount = parseFloat(orderData.total?.orderAmount || orderData.total || 0);
-                
-                let itemsStr = "";
-                if (Array.isArray(orderData.items)) {
-                  itemsStr = orderData.items.map((i: any) => `${i.quantity || 1}x ${i.name}`).join(", ");
-                } else {
-                  itemsStr = "1x AMO Standard Order Bundle";
-                }
-
-                newOrdersList.push({
-                  id: orderId.startsWith("AM-") ? orderId : `AM-${orderId.substring(0,6)}`,
-                  channel: "amo",
-                  customerName,
-                  time: new Date(orderData.createdAt || Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-                  items: itemsStr,
-                  total: totalAmount,
-                  status: "pending"
-                });
-              }
-            } catch (errDet: any) {
-              logAmoTransaction(`POLL_ORDERS_ORDER_DETAILS_${orderId}_FAILED`,
-                { url: `${baseUrl}/v1/open-delivery/orders/${orderId}`, method: "GET", headers: { "Authorization": `Bearer ${accessToken}` } },
-                undefined,
-                errDet
-              );
-              console.error(`Error fetching detailed order for ${orderId}:`, errDet.message);
-            }
-          }
-        }
-      }
-
-      if (ackEventIds.length > 0) {
-        const ackUrl = `${baseUrl}/v1/open-delivery/orders/events/acknowledgment`;
-        console.log(`[AMO Poll] Acknowledging events: ${ackUrl}`);
-        const ackPayload = ackEventIds.map(id => ({ id }));
-        
-        try {
-          const ackResponse = await fetchWithTimeout(ackUrl, {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-              "Accept": "application/json"
-            },
-            body: JSON.stringify(ackPayload)
-          }, 4000);
-
-          let ackBodyText = "";
-          try {
-            const clonedAck = ackResponse.clone();
-            ackBodyText = await clonedAck.text();
-          } catch {
-            ackBodyText = "(no body)";
-          }
-
-          logAmoTransaction("POLL_ORDERS_EVENTS_ACK",
-            { url: ackUrl, method: "POST", headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: ackPayload },
-            { status: ackResponse.status, body: ackBodyText }
-          );
-        } catch (errAck: any) {
-          logAmoTransaction("POLL_ORDERS_EVENTS_ACK_FAILED",
-            { url: ackUrl, method: "POST", headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: ackPayload },
-            undefined,
-            errAck
-          );
-          console.warn("Could not acknowledge polled events:", errAck.message);
-        }
       }
 
       return res.json({
         success: true,
-        orders: newOrdersList
+        orders: ordersResult.orders
       });
-
     } catch (error: any) {
       logAmoTransaction("POLL_ORDERS_PIPELINE_ERROR",
         { url: "N/A", method: "POST", body: req.body },
@@ -1248,7 +1021,7 @@ async function startServer() {
       console.error("[AMO Poll Proxy error]", error);
       return res.json({
         success: false,
-        message: `API Poll request pipeline failed: ${error.message || error}`
+        message: `API sync request failed: ${error.message || error}`
       });
     }
   });

@@ -72,17 +72,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
       const saved = localStorage.getItem("orders_list");
       if (saved) return JSON.parse(saved);
     } catch {}
-    
-    return [
-      { id: "AM-4028", channel: "amo", customerName: "Rodrigo Alves", time: "17:55", items: "1x Chocolate Fudge Brownie, 1x Espresso Latte", total: 24.50, status: "completed" },
-      { id: "AM-1092", channel: "amo", customerName: "Ana Beatriz", time: "18:20", items: "1x Crispy Chicken Caesar Salad, 1x Sparkling Water", total: 35.00, status: "delivering" },
-      { id: "AM-2201", channel: "amo", customerName: "Lucas Oliveira", time: "18:05", items: "2x Double Beef Smashed Burgers, 2x French Fries", total: 79.90, status: "preparing" },
-      { id: "AM-3184", channel: "amo", customerName: "Gabriela Costa", time: "17:42", items: "1x Truffle Burger Combo, 1x Vanilla Milkshake", total: 42.90, status: "cancelled" },
-      { id: "AM-8842", channel: "amo", customerName: "Thiago Martins", time: "17:15", items: "1x Strawberry Waffle with Ice Cream", total: 22.00, status: "cancelled" },
-      { id: "IF-9281", channel: "ifood", customerName: "Mariana Silva", time: "18:41", items: "1x Truffle Burger Combo, 1x Vanilla Milkshake", total: 42.90, status: "delivering" },
-      { id: "WB-0283", channel: "website", customerName: "Carlos Eduardo", time: "18:35", items: "2x Artisanal Pizza Margherita, 1x Coke Zero", total: 68.00, status: "preparing" },
-      { id: "99-3101", channel: "99food", customerName: "Julia Souza", time: "18:12", items: "1x Salmon Poke Bowl with Mango & Avocado", total: 38.50, status: "completed" },
-    ];
+    return [];
   });
 
   // Track the active left menu tab channel
@@ -166,7 +156,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
     
     return {
       ifood: { apiBaseUrl: "https://merchant-api.ifood.com.br", amoToken: "", restaurantId: "IF-82910", clientId: "", clientSecret: "" },
-      amo: { apiBaseUrl: "https://api.uat.amo.delivery", amoToken: "amo_auth_910283", restaurantId: "AMO-3102", clientId: "", clientSecret: "" },
+      amo: { apiBaseUrl: "https://api.uat.amo.delivery", amoToken: "", restaurantId: "", clientId: "", clientSecret: "" },
       "99food": { apiBaseUrl: "https://api.food.99app.com/v1", amoToken: "", restaurantId: "99F-4910" },
       website: { apiBaseUrl: "https://api.mywebstore.com/v1", amoToken: "", restaurantId: "WEB-7821" },
     };
@@ -761,12 +751,8 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                     <span className="text-slate-800">POST /oauth/token (grant_type)</span>
                   </div>
                   <div className="bg-white/80 p-2 rounded-xl border border-slate-100 flex flex-col">
-                    <span className="text-slate-400 text-[8.5px] uppercase font-bold">{language === "pt" ? "STATUS RESTAURANTE" : "MERCHANT DETAILS"}</span>
-                    <span className="text-slate-600">GET /v1/open-delivery/merchant/&#123;id&#125;</span>
-                  </div>
-                  <div className="bg-white/80 p-2 rounded-xl border border-slate-100 flex flex-col">
-                    <span className="text-slate-400 text-[8.5px] uppercase font-bold">{language === "pt" ? "SONDAGEM DE PEDIDOS" : "ORDER POLLING"}</span>
-                    <span className="text-[#FF5C00]">POST /v1/open-delivery/orders/events:poll</span>
+                    <span className="text-slate-400 text-[8.5px] uppercase font-bold">{language === "pt" ? "LISTAR PEDIDOS" : "LIST ORDERS"}</span>
+                    <span className="text-[#FF5C00]">GET /v1/open-delivery/orders?page=1&limit=5</span>
                   </div>
                   <div className="bg-white/80 p-2 rounded-xl border border-slate-100 flex flex-col">
                     <span className="text-slate-400 text-[8.5px] uppercase font-bold">{language === "pt" ? "DADOS DO PEDIDO" : "ORDER RETRIEVAL"}</span>
@@ -937,13 +923,22 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                 </div>
               )}
 
-              {/* Restaurant ID Field */}
+              {/* Restaurant ID Field — optional for AMO (credentials only) */}
               <div className="space-y-1.5">
                 <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
                   {currentChannel.key === "ifood" 
                     ? (language === "pt" ? "Merchant ID (ID do Restaurante)" : "Merchant ID (Restaurant ID)")
+                    : currentChannel.key === "amo"
+                    ? (language === "pt" ? "ID do Restaurante (opcional)" : "Restaurant ID (optional)")
                     : (language === "pt" ? "ID do Restaurante" : "Restaurant ID")}
                 </label>
+                {currentChannel.key === "amo" && (
+                  <p className="text-[10px] text-amber-700 font-medium">
+                    {language === "pt"
+                      ? "A integração AMO usa apenas Client ID e Client Secret. Deixe em branco."
+                      : "AMO integration only requires Client ID and Client Secret. Leave this blank."}
+                  </p>
+                )}
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
                     <Tag className="w-4 h-4" />

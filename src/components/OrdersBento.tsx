@@ -75,24 +75,6 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
             }
             return parsed;
           });
-        } else {
-          const defaults = [
-            { id: "AM-4028", channel: "amo", customerName: "Rodrigo Alves", time: "17:55", items: "1x Chocolate Fudge Brownie, 1x Espresso Latte", total: 24.50, status: "completed" },
-            { id: "AM-1092", channel: "amo", customerName: "Ana Beatriz", time: "18:20", items: "1x Crispy Chicken Caesar Salad, 1x Sparkling Water", total: 35.00, status: "delivering" },
-            { id: "AM-2201", channel: "amo", customerName: "Lucas Oliveira", time: "18:05", items: "2x Double Beef Smashed Burgers, 2x French Fries", total: 79.90, status: "preparing" },
-            { id: "AM-3184", channel: "amo", customerName: "Gabriela Costa", time: "17:42", items: "1x Truffle Burger Combo, 1x Vanilla Milkshake", total: 42.90, status: "cancelled" },
-            { id: "AM-8842", channel: "amo", customerName: "Thiago Martins", time: "17:15", items: "1x Strawberry Waffle with Ice Cream", total: 22.00, status: "cancelled" },
-            { id: "IF-9281", channel: "ifood", customerName: "Mariana Silva", time: "18:41", items: "1x Truffle Burger Combo, 1x Vanilla Milkshake", total: 42.90, status: "delivering" },
-            { id: "WB-0283", channel: "website", customerName: "Carlos Eduardo", time: "18:35", items: "2x Artisanal Pizza Margherita, 1x Coke Zero", total: 68.00, status: "preparing" },
-            { id: "99-3101", channel: "99food", customerName: "Julia Souza", time: "18:12", items: "1x Salmon Poke Bowl with Mango & Avocado", total: 38.50, status: "completed" },
-          ];
-          setOrders(current => {
-            if (JSON.stringify(current) === JSON.stringify(defaults)) {
-              return current;
-            }
-            return defaults;
-          });
-          localStorage.setItem("orders_list", JSON.stringify(defaults));
         }
       } catch {}
     };
@@ -140,8 +122,6 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
     let apiBaseUrl = "https://api.uat.amo.delivery";
     let clientId = "";
     let clientSecret = "";
-    let restaurantId = "";
-    let amoToken = "";
 
     try {
       const savedConfigs = localStorage.getItem("orders_channel_configs");
@@ -151,8 +131,6 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
           apiBaseUrl = parsed.amo.apiBaseUrl || "https://api.uat.amo.delivery";
           clientId = parsed.amo.clientId || "";
           clientSecret = parsed.amo.clientSecret || "";
-          restaurantId = parsed.amo.restaurantId || "";
-          amoToken = parsed.amo.amoToken || "";
         }
       }
     } catch (err) {
@@ -174,8 +152,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
 
     setIsFetchingAmo(true);
     try {
-      console.log("Polling live AMO orders via Open Delivery API (using test-amo-connection/settings mechanism)...");
-      const response = await fetch("/api/test-amo-connection", {
+      const response = await fetch("/api/amo/poll-orders", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -183,9 +160,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
         body: JSON.stringify({
           apiBaseUrl,
           clientId,
-          clientSecret,
-          restaurantId,
-          amoToken
+          clientSecret
         })
       });
 
@@ -203,49 +178,34 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
 
       const data = await response.json();
       if (data.success) {
-        if (Array.isArray(data.orders) && data.orders.length > 0) {
-          let newlyAddedCount = 0;
-          setOrders(prev => {
-            const currentIds = new Set(prev.map(o => o.id));
-            const freshOrders = data.orders.filter((o: any) => !currentIds.has(o.id));
-            newlyAddedCount = freshOrders.length;
-            
-            if (freshOrders.length === 0) return prev;
+        const apiOrders: Order[] = Array.isArray(data.orders) ? data.orders : [];
+        const prevAmoCount = orders.filter(o => o.channel === "amo").length;
 
-            const updated = [...freshOrders, ...prev];
-            localStorage.setItem("orders_list", JSON.stringify(updated));
-            
-            setTimeout(() => {
-              window.dispatchEvent(new Event("storage"));
-            }, 10);
+        setOrders(prev => {
+          const nonAmo = prev.filter(o => o.channel !== "amo");
+          const updated = [...apiOrders, ...nonAmo];
+          localStorage.setItem("orders_list", JSON.stringify(updated));
 
-            return updated;
-          });
+          setTimeout(() => {
+            window.dispatchEvent(new Event("storage"));
+          }, 10);
 
-          if (newlyAddedCount > 0) {
-            const isPlural = newlyAddedCount > 1;
-            const textPt = isPlural 
-              ? `[API] ${newlyAddedCount} novos pedidos AMO recebidos!` 
-              : `[API] Novo pedido AMO #${data.orders[0].id} recebido!`;
-            const textEn = isPlural 
-              ? `[API] ${newlyAddedCount} new AMO orders received!` 
-              : `[API] New AMO order #${data.orders[0].id} received!`;
-            showToast(language === "pt" ? textPt : textEn);
-          } else if (isManualClick) {
-            showToast(
-              language === "pt"
-                ? "Sincronização concluída. Nenhum novo pedido pendente."
-                : "Sync completed. No new pending orders."
-            );
-          }
-        } else {
-          if (isManualClick) {
-            showToast(
-              language === "pt"
-                ? "Sem novos pedidos na fila da API AMO."
-                : "No new orders found in the AMO API queue."
-            );
-          }
+          return updated;
+        });
+
+        if (isManualClick) {
+          showToast(
+            language === "pt"
+              ? `Sincronizado: ${apiOrders.length} pedido(s) AMO carregado(s) da API.`
+              : `Synced: ${apiOrders.length} AMO order(s) loaded from the API.`
+          );
+        } else if (apiOrders.length > prevAmoCount) {
+          const newlyAddedCount = apiOrders.length - prevAmoCount;
+          showToast(
+            language === "pt"
+              ? `[API] ${newlyAddedCount} novo(s) pedido(s) AMO recebido(s)!`
+              : `[API] ${newlyAddedCount} new AMO order(s) received!`
+          );
         }
       } else {
         if (isManualClick) {
