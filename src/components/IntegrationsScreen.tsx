@@ -22,16 +22,7 @@ import {
   FileText
 } from "lucide-react";
 import { formatCurrency } from "../utils";
-
-interface Order {
-  id: string;
-  channel: string;
-  customerName: string;
-  time: string;
-  items: string;
-  total: number;
-  status: "pending" | "preparing" | "delivering" | "completed" | "cancelled";
-}
+import type { Order } from "../types";
 
 interface IntegrationsScreenProps {
   language: "en" | "pt";
@@ -168,6 +159,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
   const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [confirmClearAmo, setConfirmClearAmo] = useState(false);
   const [confirmResetOrders, setConfirmResetOrders] = useState(false);
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
 
   const fetchAndShowAmoLogs = async () => {
     setIsFetchingLogs(true);
@@ -463,6 +455,21 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
     localStorage.setItem("orders_list", JSON.stringify([]));
     window.dispatchEvent(new Event("storage"));
     showToast(language === "pt" ? "Todos os logs de pedidos foram removidos com sucesso!" : "All order logs cleared successfully from all channels!");
+  };
+
+  const getAmoOrderMeta = (order: Order) => {
+    const data = order.amoData as Record<string, any> | undefined;
+    if (!data) return null;
+
+    const phone = data.customer?.phone?.number || data.customer?.phone || "";
+    const email = data.customer?.email || "";
+    const orderType = data.type || "";
+    const lastEvent = data.lastEvent || "";
+    const paymentMethod = data.payments?.methods?.[0]?.method || "";
+    const paymentType = data.payments?.methods?.[0]?.type || "";
+    const takeoutTime = data.takeout?.takeoutDateTime || data.delivery?.deliveryDateTime || "";
+
+    return { phone, email, orderType, lastEvent, paymentMethod, paymentType, takeoutTime };
   };
 
   const INT_CHANNELS = [
@@ -1046,12 +1053,15 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                     completed: "bg-emerald-50 text-emerald-600 border-emerald-100",
                     cancelled: "bg-rose-50 text-rose-600 border-rose-100",
                   };
+                  const amoMeta = getAmoOrderMeta(o);
+                  const isExpanded = expandedOrderId === o.id;
 
                   return (
                     <div 
                       key={o.id} 
-                      className="p-4 bg-white border border-slate-100 hover:border-slate-200 hover:shadow-2xs rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
+                      className="p-4 bg-white border border-slate-100 hover:border-slate-200 hover:shadow-2xs rounded-2xl flex flex-col gap-3 transition-all"
                     >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-xs font-extrabold bg-slate-50 text-slate-800 px-1.5 py-0.5 border border-slate-100 rounded-md">
@@ -1069,6 +1079,31 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                         <p className="text-xs text-slate-600 font-medium truncate" title={o.items}>
                           {o.items}
                         </p>
+                        {amoMeta && (
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {amoMeta.orderType && (
+                              <span className="text-[10px] font-bold uppercase bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md">
+                                {amoMeta.orderType}
+                              </span>
+                            )}
+                            {amoMeta.lastEvent && (
+                              <span className="text-[10px] font-bold uppercase bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-100">
+                                {amoMeta.lastEvent}
+                              </span>
+                            )}
+                            {amoMeta.phone && (
+                              <span className="text-[10px] font-semibold text-slate-500">{amoMeta.phone}</span>
+                            )}
+                            {amoMeta.email && (
+                              <span className="text-[10px] font-semibold text-slate-500 truncate max-w-[180px]">{amoMeta.email}</span>
+                            )}
+                            {(amoMeta.paymentMethod || amoMeta.paymentType) && (
+                              <span className="text-[10px] font-semibold text-slate-500">
+                                {amoMeta.paymentMethod}{amoMeta.paymentType ? ` / ${amoMeta.paymentType}` : ""}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
@@ -1119,6 +1154,26 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                           )}
                         </div>
                       </div>
+                      </div>
+
+                      {o.amoData && (
+                        <div className="border-t border-slate-100 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedOrderId(isExpanded ? null : o.id)}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                          >
+                            {isExpanded
+                              ? (language === "pt" ? "Ocultar dados completos da API" : "Hide full API data")
+                              : (language === "pt" ? "Ver dados completos da API" : "View full API data")}
+                          </button>
+                          {isExpanded && (
+                            <pre className="mt-2 p-3 bg-slate-950 text-slate-100 rounded-xl text-[10px] leading-relaxed overflow-x-auto max-h-64 overflow-y-auto font-mono">
+                              {JSON.stringify(o.amoData, null, 2)}
+                            </pre>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })

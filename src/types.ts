@@ -1,3 +1,19 @@
+export type OrderStatus = "pending" | "preparing" | "delivering" | "completed" | "cancelled";
+
+export interface Order {
+  id: string;
+  channel: string;
+  customerName: string;
+  time: string;
+  items: string;
+  total: number;
+  status: OrderStatus;
+  /** AMO Open Delivery API order id */
+  amoOrderId?: string;
+  /** Full raw order payload returned by AMO GET /v1/open-delivery/orders/{id} */
+  amoData?: Record<string, unknown>;
+}
+
 export interface ReceiptItem {
   id: string; // Unique client-side ID
   name: string;

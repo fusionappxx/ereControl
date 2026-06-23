@@ -245,6 +245,8 @@ type AmoMappedOrder = {
   items: string;
   total: number;
   status: "pending" | "preparing" | "delivering" | "completed" | "cancelled";
+  amoOrderId: string;
+  amoData: Record<string, unknown>;
 };
 
 function mapAmoLastEventToStatus(lastEvent: string): AmoMappedOrder["status"] {
@@ -284,8 +286,46 @@ function mapAmoOrderDocToAppOrder(orderData: any): AmoMappedOrder {
     }),
     items: itemsStr,
     total: totalAmount,
-    status: mapAmoLastEventToStatus(orderData.lastEvent || "")
+    status: mapAmoLastEventToStatus(orderData.lastEvent || ""),
+    amoOrderId: String(orderData.id || ""),
+    amoData: orderData as Record<string, unknown>
   };
+}
+
+async function fetchAmoOrderDetail(
+  baseUrl: string,
+  accessToken: string,
+  orderId: string,
+  logPrefix: string
+): Promise<any | null> {
+  const detailUrl = `${baseUrl}/v1/open-delivery/orders/${orderId}`;
+  try {
+    const detailResponse = await fetchWithTimeout(detailUrl, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Accept": "application/json"
+      }
+    }, 5000);
+
+    const detailBodyText = await detailResponse.text();
+    logAmoTransaction(`${logPrefix}_ORDER_${orderId}`,
+      { url: detailUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
+      { status: detailResponse.status, body: detailBodyText }
+    );
+
+    if (detailResponse.ok) {
+      return JSON.parse(detailBodyText);
+    }
+  } catch (err: any) {
+    logAmoTransaction(`${logPrefix}_ORDER_${orderId}_FAILED`,
+      { url: detailUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}` } },
+      undefined,
+      err
+    );
+  }
+
+  return null;
 }
 
 function shouldValidateAmoMerchantId(restaurantId: string): boolean {
@@ -379,48 +419,12 @@ async function fetchAmoRecentOrders(
   const listData: any = JSON.parse(listBodyText);
   const docs: any[] = Array.isArray(listData.docs) ? listData.docs : [];
 
-  const ordersWithItems = await Promise.all(docs.map(async (doc) => {
-    if (Array.isArray(doc.items) && doc.items.length > 0) {
-      return mapAmoOrderDocToAppOrder(doc);
-    }
-
-    try {
-      const detailUrl = `${baseUrl}/v1/open-delivery/orders/${doc.id}`;
-      const detailResponse = await fetchWithTimeout(detailUrl, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Accept": "application/json"
-        }
-      }, 5000);
-
-      let detailBodyText = "";
-      try {
-        detailBodyText = await detailResponse.text();
-      } catch (e: any) {
-        detailBodyText = "Error reading detail response: " + e.message;
-      }
-
-      logAmoTransaction(`${logPrefix}_ORDER_${doc.id}`,
-        { url: detailUrl, method: "GET", headers: { "Authorization": `Bearer ${accessToken}`, "Accept": "application/json" } },
-        { status: detailResponse.status, body: detailBodyText }
-      );
-
-      if (detailResponse.ok) {
-        return mapAmoOrderDocToAppOrder(JSON.parse(detailBodyText));
-      }
-    } catch (err: any) {
-      logAmoTransaction(`${logPrefix}_ORDER_${doc.id}_FAILED`,
-        { url: `${baseUrl}/v1/open-delivery/orders/${doc.id}`, method: "GET", headers: { "Authorization": `Bearer ${accessToken}` } },
-        undefined,
-        err
-      );
-    }
-
-    return mapAmoOrderDocToAppOrder(doc);
+  const ordersWithFullData = await Promise.all(docs.map(async (doc) => {
+    const detail = await fetchAmoOrderDetail(baseUrl, accessToken, doc.id, logPrefix);
+    return mapAmoOrderDocToAppOrder(detail || doc);
   }));
 
-  return { orders: ordersWithItems };
+  return { orders: ordersWithFullData };
 }
 
 async function startServer() {

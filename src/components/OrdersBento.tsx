@@ -8,16 +8,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { formatCurrency } from "../utils";
-
-interface Order {
-  id: string;
-  channel: string;
-  customerName: string;
-  time: string;
-  items: string;
-  total: number;
-  status: "pending" | "preparing" | "delivering" | "completed" | "cancelled";
-}
+import type { Order } from "../types";
 
 interface OrdersBentoProps {
   language: "en" | "pt";
@@ -500,9 +491,19 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
                         <span className="font-bold text-slate-900 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0">
                           {order.id}
                         </span>
-                        <span className="text-slate-600 font-sans font-medium truncate">
-                          {order.customerName}
-                        </span>
+                        <div className="min-w-0">
+                          <span className="text-slate-600 font-sans font-medium truncate block">
+                            {order.customerName}
+                          </span>
+                          {order.amoData && (
+                            <span className="text-[10px] text-slate-400 truncate block">
+                              {(order.amoData as any).customer?.email || ""}
+                              {(order.amoData as any).customer?.phone?.number
+                                ? ` · ${(order.amoData as any).customer.phone.number}`
+                                : ""}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Right-aligned section with interactive status actions */}
