@@ -252,8 +252,8 @@ type AmoMappedOrder = {
 function mapAmoLastEventToStatus(lastEvent: string): AmoMappedOrder["status"] {
   const ev = (lastEvent || "").toUpperCase();
   if (["CANCELLED", "CANCELED", "REJECTED"].includes(ev)) return "cancelled";
-  if (["CONCLUDED", "DELIVERED", "PICKED_UP", "COMPLETED", "FINISHED"].includes(ev)) return "completed";
-  if (["DISPATCHED", "OUT_FOR_DELIVERY", "PICKUP_READY", "READY_FOR_PICKUP", "DELIVERING"].includes(ev)) {
+  if (["CONCLUDED", "DELIVERED", "PICKED_UP", "COMPLETED", "FINISHED", "DONE"].includes(ev)) return "completed";
+  if (["DISPATCHED", "OUT_FOR_DELIVERY", "PICKUP_READY", "READY_FOR_PICKUP", "DELIVERING", "IN_TRANSIT"].includes(ev)) {
     return "delivering";
   }
   if (["CONFIRMED", "PREPARATION_STARTED", "PREPARING", "IN_PREPARATION", "PREPARATION"].includes(ev)) {
@@ -425,6 +425,93 @@ async function fetchAmoRecentOrders(
   }));
 
   return { orders: ordersWithFullData };
+}
+
+type AmoOrderAction = "confirm" | "requestCancellation" | "readyForPickup" | "dispatch" | "pickedUp" | "delivered";
+
+function resolveAmoActionForStatus(
+  nextStatus: AmoMappedOrder["status"],
+  amoData: Record<string, unknown>
+): AmoOrderAction | null {
+  const orderType = String(amoData.type || "").toUpperCase();
+
+  switch (nextStatus) {
+    case "preparing":
+      return "confirm";
+    case "cancelled":
+      return "requestCancellation";
+    case "delivering":
+      return orderType === "DELIVERY" ? "dispatch" : "readyForPickup";
+    case "completed":
+      return orderType === "DELIVERY" ? "delivered" : "pickedUp";
+    default:
+      return null;
+  }
+}
+
+function buildAmoActionPayload(action: AmoOrderAction, amoData: Record<string, unknown>): Record<string, unknown> {
+  switch (action) {
+    case "confirm":
+      return {
+        createdAt: amoData.createdAt,
+        orderExternalCode: String(amoData.displayId ?? amoData.id ?? ""),
+        preparationTime: 15,
+        reason: "Accepted via ereControl"
+      };
+    case "requestCancellation":
+      return {
+        reason: "Rejected by establishment via ereControl",
+        code: "INTERNAL_DIFFICULTIES_OF_THE_RESTAURANT",
+        mode: "MANUAL"
+      };
+    default:
+      return {};
+  }
+}
+
+async function executeAmoOrderAction(
+  baseUrl: string,
+  accessToken: string,
+  amoOrderId: string,
+  action: AmoOrderAction,
+  amoData: Record<string, unknown>,
+  logPrefix: string
+): Promise<{ success: true } | { error: string; statusCode?: number }> {
+  const actionUrl = `${baseUrl}/v1/open-delivery/orders/${amoOrderId}/${action}`;
+  const payload = buildAmoActionPayload(action, amoData);
+
+  const actionResponse = await fetchWithTimeout(actionUrl, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
+    body: JSON.stringify(payload)
+  }, 8000);
+
+  const actionBodyText = await actionResponse.text();
+  logAmoTransaction(`${logPrefix}_ACTION_${action}`,
+    { url: actionUrl, method: "POST", headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: payload },
+    { status: actionResponse.status, body: actionBodyText }
+  );
+
+  if (actionResponse.status === 202 || actionResponse.ok) {
+    return { success: true };
+  }
+
+  let message = actionBodyText;
+  try {
+    const parsed = JSON.parse(actionBodyText);
+    message = parsed.message || parsed.title || actionBodyText;
+  } catch {
+    // keep raw text
+  }
+
+  return {
+    error: `AMO ${action} failed (status ${actionResponse.status}): ${String(message).substring(0, 200)}`,
+    statusCode: actionResponse.status
+  };
 }
 
 async function startServer() {
@@ -1026,6 +1113,74 @@ async function startServer() {
       return res.json({
         success: false,
         message: `API sync request failed: ${error.message || error}`
+      });
+    }
+  });
+
+  // Update a single AMO order status via Open Delivery action endpoints (confirm, cancel, etc.)
+  app.post("/api/amo/update-order-status", async (req, res) => {
+    try {
+      const { apiBaseUrl, clientId, clientSecret, amoOrderId, nextStatus, amoData } = req.body || {};
+      const baseUrl = (apiBaseUrl || "https://api.uat.amo.delivery").trim().replace(/\/$/, "");
+
+      if (!clientId || !clientSecret) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing credentials. Client ID and Client Secret are required."
+        });
+      }
+
+      if (!amoOrderId || !nextStatus) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing amoOrderId or nextStatus."
+        });
+      }
+
+      const orderData = (amoData || {}) as Record<string, unknown>;
+      const action = resolveAmoActionForStatus(nextStatus, orderData);
+      if (!action) {
+        return res.json({
+          success: false,
+          message: `No AMO API action mapped for status '${nextStatus}'.`
+        });
+      }
+
+      const tokenResult = await requestAmoAccessToken(baseUrl, clientId, clientSecret, "UPDATE_ORDER_STATUS_OAUTH");
+      if ("error" in tokenResult) {
+        return res.json({ success: false, message: tokenResult.error });
+      }
+
+      const actionResult = await executeAmoOrderAction(
+        baseUrl,
+        tokenResult.accessToken,
+        amoOrderId,
+        action,
+        orderData,
+        "UPDATE_ORDER_STATUS"
+      );
+
+      if ("error" in actionResult) {
+        return res.json({ success: false, message: actionResult.error, statusCode: actionResult.statusCode });
+      }
+
+      const refreshed = await fetchAmoOrderDetail(baseUrl, tokenResult.accessToken, amoOrderId, "UPDATE_ORDER_STATUS");
+      const mappedOrder = mapAmoOrderDocToAppOrder(refreshed || orderData);
+
+      return res.json({
+        success: true,
+        message: `Order status updated via AMO API (${action}).`,
+        order: mappedOrder
+      });
+    } catch (error: any) {
+      logAmoTransaction("UPDATE_ORDER_STATUS_PIPELINE_ERROR",
+        { url: "N/A", method: "POST", body: req.body },
+        undefined,
+        error
+      );
+      return res.json({
+        success: false,
+        message: `Failed to update order status: ${error.message || error}`
       });
     }
   });

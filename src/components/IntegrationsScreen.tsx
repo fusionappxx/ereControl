@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "../utils";
 import type { Order } from "../types";
+import { updateAmoOrderStatusViaApi } from "../amoOrders";
 
 interface IntegrationsScreenProps {
   language: "en" | "pt";
@@ -160,6 +161,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
   const [confirmClearAmo, setConfirmClearAmo] = useState(false);
   const [confirmResetOrders, setConfirmResetOrders] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
   const fetchAndShowAmoLogs = async () => {
     setIsFetchingLogs(true);
@@ -435,13 +437,45 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
     );
   };
 
-  const updateOrderStatus = (orderId: string, nextStatus: Order["status"]) => {
-    setOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        return { ...o, status: nextStatus };
+  const updateOrderStatus = async (order: Order, nextStatus: Order["status"]) => {
+    if (order.channel === "amo") {
+      setUpdatingOrderId(order.id);
+      try {
+        const result = await updateAmoOrderStatusViaApi(order, nextStatus);
+        if (!result.success || !result.order) {
+          showToast(
+            language === "pt"
+              ? `Falha na API AMO: ${result.message || "Erro desconhecido"}`
+              : `AMO API failed: ${result.message || "Unknown error"}`
+          );
+          return;
+        }
+
+        setOrders(prev => {
+          const updated = prev.map(o => (o.id === order.id ? result.order! : o));
+          localStorage.setItem("orders_list", JSON.stringify(updated));
+          window.dispatchEvent(new Event("storage"));
+          return updated;
+        });
+
+        showToast(
+          language === "pt"
+            ? `Pedido ${order.id} atualizado na API (${result.order.status}).`
+            : `Order ${order.id} updated on API (${result.order.status}).`
+        );
+      } catch (err: any) {
+        showToast(
+          language === "pt"
+            ? `Erro de rede: ${err.message}`
+            : `Network error: ${err.message}`
+        );
+      } finally {
+        setUpdatingOrderId(null);
       }
-      return o;
-    }));
+      return;
+    }
+
+    setOrders(prev => prev.map(o => (o.id === order.id ? { ...o, status: nextStatus } : o)));
   };
 
   const handleResetOrders = () => {
@@ -1118,8 +1152,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                         <div className="flex items-center gap-1">
                           {o.status === "pending" && (
                             <button
-                              onClick={() => updateOrderStatus(o.id, "preparing")}
-                              className="p-1.5 text-blue-500 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-lg transition-colors"
+                              onClick={() => updateOrderStatus(o, "preparing")}
+                              disabled={updatingOrderId === o.id}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 border border-transparent hover:border-blue-100 rounded-lg transition-colors disabled:opacity-40"
                               title="Begin preparation"
                             >
                               <Play className="w-4 h-4" />
@@ -1127,8 +1162,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                           )}
                           {o.status === "preparing" && (
                             <button
-                              onClick={() => updateOrderStatus(o.id, "delivering")}
-                              className="p-1.5 text-indigo-500 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-colors"
+                              onClick={() => updateOrderStatus(o, "delivering")}
+                              disabled={updatingOrderId === o.id}
+                              className="p-1.5 text-indigo-500 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-colors disabled:opacity-40"
                               title="Handover to delivery rider"
                             >
                               <Play className="w-4 h-4" />
@@ -1136,8 +1172,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                           )}
                           {o.status === "delivering" && (
                             <button
-                              onClick={() => updateOrderStatus(o.id, "completed")}
-                              className="p-1.5 text-emerald-500 hover:bg-emerald-50 border border-transparent hover:border-emerald-100 rounded-lg transition-colors"
+                              onClick={() => updateOrderStatus(o, "completed")}
+                              disabled={updatingOrderId === o.id}
+                              className="p-1.5 text-emerald-500 hover:bg-emerald-50 border border-transparent hover:border-emerald-100 rounded-lg transition-colors disabled:opacity-40"
                               title="Mark as delivered successfully"
                             >
                               <Check className="w-4 h-4" />
@@ -1145,8 +1182,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                           )}
                           {o.status !== "completed" && o.status !== "cancelled" && (
                             <button
-                              onClick={() => updateOrderStatus(o.id, "cancelled")}
-                              className="p-1.5 text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg transition-colors"
+                              onClick={() => updateOrderStatus(o, "cancelled")}
+                              disabled={updatingOrderId === o.id}
+                              className="p-1.5 text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-lg transition-colors disabled:opacity-40"
                               title="Cancel order"
                             >
                               <X className="w-4 h-4" />

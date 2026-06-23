@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "../utils";
 import type { Order } from "../types";
+import { updateAmoOrderStatusViaApi } from "../amoOrders";
 
 interface OrdersBentoProps {
   language: "en" | "pt";
@@ -97,6 +98,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
   }, [orders]);
 
   const [isFetchingAmo, setIsFetchingAmo] = useState(false);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
 
   const pollAmoOrdersFromApi = async (isManualClick = false) => {
     if (!integrations.amo) {
@@ -255,21 +257,51 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
     }
   };
 
-  const handleUpdateStatus = (orderId: string, nextStatus: Order["status"]) => {
-    const updated = orders.map(o => {
-      if (o.id === orderId) {
-        return { ...o, status: nextStatus };
+  const handleUpdateStatus = async (order: Order, nextStatus: Order["status"]) => {
+    if (order.channel === "amo") {
+      setUpdatingOrderId(order.id);
+      try {
+        const result = await updateAmoOrderStatusViaApi(order, nextStatus);
+        if (!result.success || !result.order) {
+          showToast(
+            language === "pt"
+              ? `Falha ao atualizar pedido: ${result.message || "Erro desconhecido"}`
+              : `Failed to update order: ${result.message || "Unknown error"}`
+          );
+          return;
+        }
+
+        const updated = orders.map(o => (o.id === order.id ? result.order! : o));
+        setOrders(updated);
+        localStorage.setItem("orders_list", JSON.stringify(updated));
+        window.dispatchEvent(new Event("storage"));
+
+        showToast(
+          language === "pt"
+            ? `Pedido ${order.id} atualizado na API AMO (${result.order.status}).`
+            : `Order ${order.id} updated on AMO API (${result.order.status}).`
+        );
+      } catch (err: any) {
+        showToast(
+          language === "pt"
+            ? `Erro de rede ao atualizar pedido: ${err.message}`
+            : `Network error updating order: ${err.message}`
+        );
+      } finally {
+        setUpdatingOrderId(null);
       }
-      return o;
-    });
+      return;
+    }
+
+    const updated = orders.map(o => (o.id === order.id ? { ...o, status: nextStatus } : o));
     setOrders(updated);
     localStorage.setItem("orders_list", JSON.stringify(updated));
     window.dispatchEvent(new Event("storage"));
-    
+
     showToast(
       language === "pt"
-        ? `Pedido ${orderId} atualizado para: ${nextStatus === "preparing" ? "Em preparo" : nextStatus === "cancelled" ? "Cancelado" : nextStatus}`
-        : `Order ${orderId} status set to: ${nextStatus}`
+        ? `Pedido ${order.id} atualizado para: ${nextStatus === "preparing" ? "Em preparo" : nextStatus === "cancelled" ? "Cancelado" : nextStatus}`
+        : `Order ${order.id} status set to: ${nextStatus}`
     );
   };
 
@@ -512,15 +544,17 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
                         {order.status === "pending" && (
                           <div className="flex items-center gap-1.5 mr-0.5">
                             <button
-                              onClick={() => handleUpdateStatus(order.id, "preparing")}
-                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold text-[10px] rounded-lg transition-all cursor-pointer flex items-center gap-0.5"
+                              onClick={() => handleUpdateStatus(order, "preparing")}
+                              disabled={updatingOrderId === order.id}
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-emerald-300 text-white font-extrabold text-[10px] rounded-lg transition-all cursor-pointer flex items-center gap-0.5"
                               title={language === "pt" ? "Aceitar pedido" : "Accept order"}
                             >
                               ✓ {language === "pt" ? "Aceitar" : "Accept"}
                             </button>
                             <button
-                              onClick={() => handleUpdateStatus(order.id, "cancelled")}
-                              className="px-2 py-1 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-extrabold text-[10px] rounded-lg transition-all cursor-pointer flex items-center gap-0.5"
+                              onClick={() => handleUpdateStatus(order, "cancelled")}
+                              disabled={updatingOrderId === order.id}
+                              className="px-2 py-1 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-rose-300 text-white font-extrabold text-[10px] rounded-lg transition-all cursor-pointer flex items-center gap-0.5"
                               title={language === "pt" ? "Rejeitar pedido" : "Reject order"}
                             >
                               ✗ {language === "pt" ? "Rejeitar" : "Reject"}
