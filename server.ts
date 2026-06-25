@@ -1,11 +1,56 @@
-﻿import express from "express";
+import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
+import dns from "dns";
+import { promisify } from "util";
+
+const lookupAsync = promisify(dns.lookup);
 
 dotenv.config();
+
+function isIpPrivate(ip: string): boolean {
+  if (ip === "localhost" || ip === "::1" || ip.startsWith("127.")) {
+    return true;
+  }
+  const parts = ip.split(".");
+  if (parts.length === 4) {
+    const first = parseInt(parts[0], 10);
+    const second = parseInt(parts[1], 10);
+    if (first === 10) return true;
+    if (first === 169 && second === 254) return true;
+    if (first === 192 && second === 168) return true;
+    if (first === 172 && (second >= 16 && second <= 31)) return true;
+    if (first === 0 || first >= 224) return true; // Multicast, broadcast, reserved
+  }
+  if (ip.toLowerCase().startsWith("fc") || ip.toLowerCase().startsWith("fd") || ip.toLowerCase().startsWith("fe80")) {
+    return true;
+  }
+  return false;
+}
+
+async function validateSafeUrl(urlStr: string): Promise<boolean> {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    const host = parsed.hostname;
+    if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(host)) {
+      return !isIpPrivate(host);
+    }
+    const res = await lookupAsync(host);
+    if (res && res.address) {
+      return !isIpPrivate(res.address);
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 
 // Helper to detect Gemini/Google API rate limits or quota exhausted errors
 const isQuotaError = (err: any): boolean => {
@@ -219,6 +264,11 @@ function logAmoTransaction(
 
 // Custom fetch helper with a deterministic timeout to prevent unhandled proxy hangs
 async function fetchWithTimeout(url: string, options: any = {}, timeoutMs = 8000) {
+  const isSafe = await validateSafeUrl(url);
+  if (!isSafe) {
+    throw new Error("Security Alert: Access to the requested URL is restricted (SSRF prevention).");
+  }
+
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -242,11 +292,15 @@ type AmoMappedOrder = {
   channel: string;
   customerName: string;
   time: string;
+  date: string;
   items: string;
   total: number;
   status: "pending" | "preparing" | "delivering" | "completed" | "cancelled";
   amoOrderId: string;
   amoData: Record<string, unknown>;
+  type?: "delivery" | "pickup" | "dine_in";
+  orderTiming?: string;
+  scheduledDateTimeStart?: string;
 };
 
 function mapAmoLastEventToStatus(lastEvent: string): AmoMappedOrder["status"] {
@@ -271,24 +325,66 @@ function mapAmoOrderDocToAppOrder(orderData: any): AmoMappedOrder {
 
   let itemsStr = "";
   if (Array.isArray(orderData.items) && orderData.items.length > 0) {
-    itemsStr = orderData.items.map((i: any) => `${i.quantity || 1}x ${i.name}`).join(", ");
+    itemsStr = orderData.items.map((i: any) => {
+      const quantity = i.quantity || 1;
+      const name = i.name || "";
+      const obs = (i.specialInstructions || i.observation || "").trim();
+      const obsSuffix = obs ? ` (${obs})` : "";
+      return `${quantity}x ${name}${obsSuffix}`;
+    }).join(", ");
   } else {
     itemsStr = `Order #${displayId}`;
   }
+
+  const orderDate = orderData.createdAt ? new Date(orderData.createdAt) : new Date();
+  const year = orderDate.getFullYear();
+  const month = String(orderDate.getMonth() + 1).padStart(2, '0');
+  const day = String(orderDate.getDate()).padStart(2, '0');
+  const dateStr = `${year}-${month}-${day}`;
+
+  let mappedType: "delivery" | "pickup" | "dine_in" = "delivery";
+  const rawType = (orderData.type || "").toUpperCase();
+  if (rawType === "TAKEOUT" || rawType === "PICKUP") {
+    mappedType = "pickup";
+  } else if (rawType === "DINE_IN" || rawType === "IN_STORE" || rawType === "INSTORE") {
+    mappedType = "dine_in";
+  }
+
+  // Robust scheduled order detection (support top-level and nested structures)
+  const orderTimingVal = 
+    orderData.orderTiming || 
+    orderData.order_timing || 
+    orderData.scheduling?.orderTiming || 
+    orderData.scheduling?.order_timing || 
+    (orderData.scheduledDateTimeStart || orderData.scheduled_date_time_start || orderData.delivery?.deliveryDateTime ? "SCHEDULED" : "IMMEDIATE");
+
+  const scheduledDateTimeStartVal = 
+    orderData.scheduledDateTimeStart || 
+    orderData.scheduled_date_time_start || 
+    orderData.scheduling?.scheduledDateTimeStart || 
+    orderData.scheduling?.scheduled_date_time_start || 
+    orderData.delivery?.deliveryDateTime || 
+    orderData.delivery?.delivery_date_time || 
+    orderData.deliveryDateTime || 
+    orderData.delivery_date_time;
 
   return {
     id: `AM-${displayId}`,
     channel: "amo",
     customerName,
-    time: new Date(orderData.createdAt || Date.now()).toLocaleTimeString("pt-BR", {
+    time: orderDate.toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit"
     }),
+    date: dateStr,
     items: itemsStr,
     total: totalAmount,
     status: mapAmoLastEventToStatus(orderData.lastEvent || ""),
     amoOrderId: String(orderData.id || ""),
-    amoData: orderData as Record<string, unknown>
+    amoData: orderData as Record<string, unknown>,
+    type: mappedType,
+    orderTiming: orderTimingVal,
+    scheduledDateTimeStart: scheduledDateTimeStartVal
   };
 }
 
@@ -636,6 +732,11 @@ async function startServer() {
       } else {
         try {
           // Attempt to fetch SEFAZ portal
+          const isSafe = await validateSafeUrl(cleanUrl);
+          if (!isSafe) {
+            throw new Error("Security Alert: Access to the requested URL is restricted.");
+          }
+
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 6000); // 6s timeout
 

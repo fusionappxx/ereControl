@@ -278,9 +278,36 @@
         }
       },
       "required": ["id", "storeId", "month", "salesData"]
+    },
+    "volumeAndAppTax": {
+      "title": "VolumeAndAppTax",
+      "description": "Expected monthly order volume and application sales channel tax rates",
+      "type": "object",
+      "properties": {
+        "monthlyVolume": {
+          "type": "number"
+        },
+        "amoTax": {
+          "type": "number"
+        },
+        "ifoodTax": {
+          "type": "number"
+        },
+        "tax99Food": {
+          "type": "number"
+        },
+        "siteTax": {
+          "type": "number"
+        }
+      },
+      "required": ["monthlyVolume", "amoTax", "ifoodTax", "tax99Food", "siteTax"]
     }
   },
   "firestore": {
+    "/settings/volume_and_app_tax": {
+      "schema": "volumeAndAppTax",
+      "description": "Expected monthly order volume divisor and delivery commission rates"
+    },
     "/channel_matrix/{matrixId}": {
       "schema": "channelMatrix",
       "description": "Daily channels sales breakdown matrix"

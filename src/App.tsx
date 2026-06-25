@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { 
   FileSpreadsheet, 
   Receipt, 
@@ -17,7 +17,9 @@ import {
   Coins,
   Zap,
   LineChart,
-  Calendar
+  Calendar,
+  Camera,
+  Image as ImageIcon
 } from "lucide-react";
 import { db, handleFirestoreError, OperationType } from "./firebase";
 import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch, deleteField } from "firebase/firestore";
@@ -38,8 +40,9 @@ import RevenueScreen from "./components/RevenueScreen";
 import StagingReviewScreen from "./components/StagingReviewScreen";
 import OrdersBento from "./components/OrdersBento";
 import IntegrationsScreen from "./components/IntegrationsScreen";
+import OrdersDetailScreen from "./components/OrdersDetailScreen";
 import { ReceiptItem, ScannedReceiptResult } from "./types";
-import { generateId, cleanDate, DEMO_RECEIPT_ITEMS, formatCurrency, setGlobalCurrency, resolveItemCategory } from "./utils";
+import { generateId, cleanDate, DEMO_RECEIPT_ITEMS, formatCurrency, setGlobalCurrency, resolveItemCategory, safeStorage } from "./utils";
 import { translations } from "./translations";
 
 export function KitchenLogo({ className = "w-6 h-6" }: { className?: string }) {
@@ -92,6 +95,7 @@ export default function App() {
 
   // Global, real-time shared state from Firestore
   const [items, setItems] = useState<ReceiptItem[]>([]);
+  const scannerRef = useRef<{ triggerChooseFile: () => void; triggerTakePhoto: () => void }>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryMappings, setCategoryMappings] = useState<Record<string, string>>({});
   const [itemCategoryRules, setItemCategoryRules] = useState<Record<string, string>>({});
@@ -134,12 +138,17 @@ export default function App() {
         "Fruits",
         "Snacks",
         "Personal Care",
+        "Bebidas",
+        "Consumo",
+        "Equipamentos",
+        "Limpeza",
+        "Embalagem",
         "Other"
       ];
       if (snapshot.exists()) {
         const data = snapshot.data();
         if (data && Array.isArray(data.list)) {
-          // Actively exclude: Beverages, Frozen, Household, Meat, Pantry
+          // Actively exclude: Beverages, Frozen, Household, Meat, Pantry (unless they are explicitly requested Portuguese names)
           const filteredList = data.list.filter(cat => {
             const low = cat.toLowerCase().trim();
             return !(
@@ -150,8 +159,21 @@ export default function App() {
               low.includes("pantry")
             );
           });
-          setCategoryMappings(data.mappings || {});
-          setCategories(filteredList.length > 0 ? filteredList : defaults);
+
+          // Ensure the user-requested Portuguese categories are in the list
+          const requestedCats = ["Bebidas", "Consumo", "Equipamentos", "Limpeza", "Embalagem"];
+          const missingCats = requestedCats.filter(
+            rc => !filteredList.some(fc => fc.trim().toLowerCase() === rc.toLowerCase())
+          );
+
+          if (missingCats.length > 0) {
+            const updatedList = [...filteredList, ...missingCats];
+            setDoc(docRef, { list: updatedList, mappings: data.mappings || {} }, { merge: true })
+              .catch(err => console.error("Error updating user requested categories:", err));
+          } else {
+            setCategoryMappings(data.mappings || {});
+            setCategories(filteredList.length > 0 ? filteredList : defaults);
+          }
         }
       } else {
         setDoc(docRef, { list: defaults })
@@ -192,14 +214,18 @@ export default function App() {
     );
 
     // Filter categories to only keep those that have at least one item,
-    // or were newly added in this session.
+    // or were newly added in this session, or are our exempt categories.
     const categoriesToKeep = categories.filter((cat) => {
       const lowerCat = cat.trim().toLowerCase();
+      const isExempt = [
+        "bebidas", "consumo", "equipamentos", "limpeza", "embalagem",
+        "produce", "bakery", "dairy", "ingredients", "fruits", "snacks", "personal care", "other"
+      ].includes(lowerCat);
       const hasItems = usedCategories.has(lowerCat);
       const isNewlyAdded = newlyAddedCategories.some(
         (n) => n.trim().toLowerCase() === lowerCat
       );
-      return hasItems || isNewlyAdded;
+      return hasItems || isNewlyAdded || isExempt;
     });
 
     // If there is any difference, save the filtered list back to Firestore
@@ -210,7 +236,7 @@ export default function App() {
     }
   }, [items, categories, isDbLoading, categoryMappings, newlyAddedCategories]);
 
-  // Filter out any categories that have no items registered (unless they were newly added in current session)
+  // Filter out any categories that have no items registered (unless they were newly added in current session or are exempt)
   const activeCategories = useMemo(() => {
     if (items.length === 0) {
       return categories;
@@ -220,31 +246,48 @@ export default function App() {
     );
     return categories.filter((cat) => {
       const lowerCat = cat.trim().toLowerCase();
+      const isExempt = [
+        "bebidas", "consumo", "equipamentos", "limpeza", "embalagem",
+        "produce", "bakery", "dairy", "ingredients", "fruits", "snacks", "personal care", "other"
+      ].includes(lowerCat);
       const hasItems = usedCategories.has(lowerCat);
       const isNewlyAdded = newlyAddedCategories.some(
         (n) => n.trim().toLowerCase() === lowerCat
       );
-      return hasItems || isNewlyAdded;
+      return hasItems || isNewlyAdded || isExempt;
     });
   }, [categories, items, newlyAddedCategories]);
 
   // Track the active screen/tab: any of the spreadsheet, configuration, metrics, or financial tools
-  const [currentTab, setCurrentTab] = useState<'scan' | 'spreadsheet' | 'categories' | 'breakdown' | 'settings' | 'uniqueItems' | 'priceVariations' | 'uniqueInvoices' | 'fixed-expenses' | 'production-costs' | 'recipe-costing-sheets' | 'revenue' | 'staged-review' | 'integrations'>('scan');
+  const [currentTab, setCurrentTab] = useState<'scan' | 'spreadsheet' | 'categories' | 'breakdown' | 'settings' | 'uniqueItems' | 'priceVariations' | 'uniqueInvoices' | 'fixed-expenses' | 'production-costs' | 'recipe-costing-sheets' | 'revenue' | 'staged-review' | 'integrations' | 'orders-detail'>('scan');
   const [selectedIntegrationChannel, setSelectedIntegrationChannel] = useState<string | undefined>(undefined);
+  const [selectedOrderDetailChannel, setSelectedOrderDetailChannel] = useState<string>("all");
   const [initialRevenueSubTab, setInitialRevenueSubTab] = useState<'store-config' | 'daily' | 'summary'>('summary');
   const [activeCostingTab, setActiveCostingTab] = useState<'fixed' | 'production' | 'recipe'>('fixed');
 
   // Load and manage custom preferences
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem("grocery_theme") as 'light' | 'dark') || 'light';
+    try {
+      return (safeStorage.getItem("grocery_theme") as 'light' | 'dark') || 'light';
+    } catch {
+      return 'light';
+    }
   });
   const [currency, setCurrency] = useState<'USD' | 'BRL' | 'EUR'>(() => {
-    const val = localStorage.getItem("grocery_currency");
-    return (val === "USD" || val === "BRL" || val === "EUR") ? val : "USD";
+    try {
+      const val = safeStorage.getItem("grocery_currency");
+      return (val === "USD" || val === "BRL" || val === "EUR") ? val : "USD";
+    } catch {
+      return 'USD';
+    }
   });
   const [language, setLanguage] = useState<'en' | 'pt'>(() => {
-    const val = localStorage.getItem("grocery_language");
-    return (val === "en" || val === "pt") ? val : "en";
+    try {
+      const val = safeStorage.getItem("grocery_language");
+      return (val === "en" || val === "pt") ? val : "en";
+    } catch {
+      return 'en';
+    }
   });
 
   // Track product item name to display custom detail screen page analyzed
@@ -252,16 +295,22 @@ export default function App() {
 
   // Synchronise preferences with localStorage
   useEffect(() => {
-    localStorage.setItem("grocery_theme", theme);
+    try {
+      safeStorage.setItem("grocery_theme", theme);
+    } catch {}
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem("grocery_currency", currency);
+    try {
+      safeStorage.setItem("grocery_currency", currency);
+    } catch {}
     setGlobalCurrency(currency);
   }, [currency]);
 
   useEffect(() => {
-    localStorage.setItem("grocery_language", language);
+    try {
+      safeStorage.setItem("grocery_language", language);
+    } catch {}
   }, [language]);
 
   // Support custom tab switches from scanned queue
@@ -1120,8 +1169,8 @@ export default function App() {
   const isRecipeTab = currentTab === 'recipe-costing-sheets' || currentTab === 'fixed-expenses' || currentTab === 'production-costs';
   const containerWidthClass = isRecipeTab
     ? 'w-[80%] max-w-[80%]'
-    : (currentTab === 'spreadsheet' || currentTab === 'uniqueItems' || currentTab === 'priceVariations' || currentTab === 'uniqueInvoices' || currentTab === 'staged-review') 
-      ? 'max-w-[90%]' 
+    : (currentTab === 'spreadsheet' || currentTab === 'uniqueItems' || currentTab === 'priceVariations' || currentTab === 'uniqueInvoices' || currentTab === 'staged-review' || currentTab === 'orders-detail') 
+      ? 'w-[90%] max-w-[90%]' 
       : 'max-w-4xl';
 
   return (
@@ -1213,6 +1262,10 @@ export default function App() {
                   setSelectedIntegrationChannel(channelKey);
                   setCurrentTab('integrations');
                 }}
+                onSelectChannel={(channelKey) => {
+                  setSelectedOrderDetailChannel(channelKey);
+                  setCurrentTab('orders-detail');
+                }}
               />
 
               {/* Bento Board Stats Dashboard */}
@@ -1274,36 +1327,45 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Card 3: Top Category */}
+                 {/* Card 3: Receipt Scan Center Actions */}
                 <div className="bg-white rounded-2xl border border-slate-100 p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow min-h-[110px]">
                   <div className="flex items-center gap-3">
-                    <div className="bg-violet-50 p-3 rounded-xl border border-violet-100 text-violet-600">
-                      <Tag className="w-5 h-5" />
+                    <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-emerald-600 shrink-0">
+                      <Camera className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Top Expense Type</p>
-                      <h3 className="text-sm font-semibold text-slate-900 mt-1 truncate font-medium" title={calculatedStats.topCategory}>
-                        {calculatedStats.topCategory}
-                      </h3>
+                      <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider leading-none">
+                        {language === "pt" ? "Central de Digitalização" : "Receipt Scan Center"}
+                      </p>
                     </div>
                   </div>
-                  <div className="mt-2.5">
+                  <div className="mt-3 grid grid-cols-2 gap-2">
                     <button
-                      id="card-categories-btn"
-                      onClick={() => setCurrentTab('categories')}
-                      className="w-full bg-violet-600 hover:bg-violet-750 active:bg-violet-800 text-white font-semibold text-[11px] px-3 py-1.5 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      type="button"
+                      onClick={() => scannerRef.current?.triggerChooseFile()}
+                      className="bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-bold text-[11px] px-2.5 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      title={language === "pt" ? "Escolher arquivos da sua galeria de fotos" : "Choose photos directly from your photo library"}
                     >
-                      <Tag className="w-3.5 h-3.5" />
-                      Manage Categories
+                      <ImageIcon className="w-3.5 h-3.5 text-sky-450 shrink-0" />
+                      <span className="truncate">{language === "pt" ? "Galeria" : "Gallery"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scannerRef.current?.triggerTakePhoto()}
+                      className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-[11px] px-2.5 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                      title={language === "pt" ? "Tirar foto usando a câmera do seu dispositivo" : "Take direct photo using device native camera"}
+                    >
+                      <Camera className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{language === "pt" ? "Câmera" : "Camera"}</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Main Scanner Section */}
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-                <div className="md:col-span-12">
-                  {duplicateScanError ? (
+              {/* Main Scanner Section (Visually hidden scanner component, visible duplicate error banner) */}
+              {duplicateScanError ? (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+                  <div className="md:col-span-12">
                     <div className="bg-white rounded-2xl shadow-sm border border-rose-100 p-8 text-center max-w-2xl mx-auto animate-fade-in">
                       <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100 text-rose-500">
                         <AlertCircle className="w-8 h-8" />
@@ -1343,16 +1405,19 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    <ReceiptScanner 
-                      onScanSuccess={handleScanSuccess} 
-                      existingInvoices={existingInvoices} 
-                      onBatchComplete={() => setCurrentTab('staged-review')}
-                      language={language}
-                    />
-                  )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="hidden">
+                  <ReceiptScanner 
+                    ref={scannerRef}
+                    onScanSuccess={handleScanSuccess} 
+                    existingInvoices={existingInvoices} 
+                    onBatchComplete={() => setCurrentTab('staged-review')}
+                    language={language}
+                  />
+                </div>
+              )}
 
               {/* Meta information & Category Split */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
@@ -1558,7 +1623,9 @@ export default function App() {
                     <button
                       onClick={() => {
                         setCurrentTab('recipe-costing-sheets');
-                        localStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+                        try {
+                          safeStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+                        } catch {}
                       }}
                       className="bg-slate-50 hover:bg-amber-50/70 text-slate-800 hover:text-amber-700 font-bold text-xs py-3 px-4 rounded-xl border border-slate-200/50 hover:border-amber-250 transition-all cursor-pointer flex items-center justify-between group/btn"
                     >
@@ -1575,7 +1642,9 @@ export default function App() {
                     <button
                       onClick={() => {
                         setCurrentTab('recipe-costing-sheets');
-                        localStorage.setItem("costing_sheets_initial_subtab", "volume-tax");
+                        try {
+                          safeStorage.setItem("costing_sheets_initial_subtab", "volume-tax");
+                        } catch {}
                       }}
                       className="bg-slate-50 hover:bg-amber-50/70 text-slate-800 hover:text-amber-700 font-bold text-xs py-3 px-4 rounded-xl border border-slate-200/50 hover:border-amber-250 transition-all cursor-pointer flex items-center justify-between group/btn"
                     >
@@ -1627,6 +1696,7 @@ export default function App() {
                   items={items}
                   categories={activeCategories}
                   language={language}
+                  onManageCategories={() => setCurrentTab('categories')}
                 />
               </div>
           )}
@@ -1634,21 +1704,6 @@ export default function App() {
           {/* VIEW 2: SPREADSHEET TABLE DATABASE VIEW */}
           {currentTab === 'spreadsheet' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => setCurrentTab('scan')}
-                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-emerald-50 border border-transparent hover:border-emerald-200/40 transition-all cursor-pointer"
-                >
-                  Scan Receipt Submission
-                </button>
-                <button
-                  onClick={() => setCurrentTab('categories')}
-                  className="text-xs font-semibold text-violet-600 hover:text-violet-750 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-violet-50 border border-transparent hover:border-violet-200/40 transition-all cursor-pointer"
-                >
-                  Manage Categories & Memory →
-                </button>
-              </div>
-
               <SpreadsheetTable 
                 items={items}
                 onItemUpdate={handleUpdateItem}
@@ -1660,6 +1715,8 @@ export default function App() {
                 categories={activeCategories}
                 onViewItemDetails={(item) => setSelectedItemForDetail(item.name)}
                 language={language}
+                onBack={() => setCurrentTab('scan')}
+                onManageCategories={() => setCurrentTab('categories')}
               />
             </div>
           )}
@@ -1667,15 +1724,6 @@ export default function App() {
           {/* VIEW 3: CATEGORIES AND RECOGNITION RULES WORKFLOW VIEW */}
           {currentTab === 'categories' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="flex items-center">
-                <button
-                  onClick={() => setCurrentTab('spreadsheet')}
-                  className="text-xs font-semibold text-violet-600 hover:text-violet-700 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-violet-50 border border-transparent hover:border-violet-200/40 transition-all cursor-pointer"
-                >
-                  ← Return to Grocery Spreadsheet Grid
-                </button>
-              </div>
-
               <CategoryManager
                 categories={activeCategories}
                 onAddCategory={handleAddCategory}
@@ -1686,6 +1734,7 @@ export default function App() {
                 onClearRules={handleClearRules}
                 items={items}
                 language={language}
+                onBack={() => setCurrentTab('scan')}
               />
             </div>
           )}
@@ -1832,6 +1881,17 @@ export default function App() {
               initialChannelKey={selectedIntegrationChannel}
               onBack={() => {
                 setSelectedIntegrationChannel(undefined);
+                setCurrentTab('scan');
+              }}
+            />
+          )}
+
+          {/* VIEW 15: DETAILED ORDERS DETAILS PAGE */}
+          {currentTab === 'orders-detail' && (
+            <OrdersDetailScreen
+              language={language}
+              initialChannel={selectedOrderDetailChannel}
+              onBack={() => {
                 setCurrentTab('scan');
               }}
             />

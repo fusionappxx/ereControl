@@ -5,18 +5,146 @@ import {
   AlertCircle, 
   RotateCcw,
   Activity,
-  RefreshCw
+  RefreshCw,
+  Truck,
+  Globe,
+  Layers,
+  Bell,
+  Store,
+  Coffee,
+  Utensils,
+  ChefHat,
+  MapPin,
+  User,
+  X,
+  MessageCircle,
+  AlarmClock
 } from "lucide-react";
-import { formatCurrency } from "../utils";
+import { formatCurrency, safeStorage } from "../utils";
 import type { Order } from "../types";
 import { updateAmoOrderStatusViaApi } from "../amoOrders";
+
+const playSynthSound = (soundName: string) => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    if (soundName === "ding") {
+      // "Buzina de Alerta / Double Alert Horn" (industrial alert alarm - dual frequency square wave)
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc1.type = "square";
+      osc1.frequency.setValueAtTime(980, now);
+      
+      osc2.type = "square";
+      osc2.frequency.setValueAtTime(1020, now);
+      
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+      
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc1.start(now);
+      osc2.start(now);
+      
+      osc1.stop(now + 0.65);
+      osc2.stop(now + 0.65);
+    } else if (soundName === "beep") {
+      // "Alarme de Impressora / Printer Buzzer" (harsh rapid repeating sawtooth sound)
+      const numBeeps = 4;
+      for (let i = 0; i < numBeeps; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(1600, now + i * 0.14);
+        gain.gain.setValueAtTime(0.3, now + i * 0.14);
+        gain.gain.setValueAtTime(0.001, now + i * 0.14 + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.14);
+        osc.stop(now + i * 0.14 + 0.09);
+      }
+    } else if (soundName === "kaching") {
+      // "Campainha de Mesa / Restaurant Bell" (loud repeating metallic ringing bell)
+      const numRings = 5;
+      for (let i = 0; i < numRings; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(2100, now + i * 0.08);
+        gain.gain.setValueAtTime(0.4, now + i * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.07);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.08);
+        osc.stop(now + i * 0.08 + 0.07);
+      }
+    } else if (soundName === "chime") {
+      // "Sirene de Cozinha / Kitchen Siren" (rapid, highly strident pulsing square wave alarm)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      
+      // rapid sound pitch changes (wobble)
+      osc.frequency.setValueAtTime(1100, now);
+      osc.frequency.setValueAtTime(1350, now + 0.1);
+      osc.frequency.setValueAtTime(1100, now + 0.2);
+      osc.frequency.setValueAtTime(1350, now + 0.3);
+      osc.frequency.setValueAtTime(1100, now + 0.4);
+      osc.frequency.setValueAtTime(1350, now + 0.5);
+      
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.6);
+    } else if (soundName === "ping") {
+      // "Apito Penetrante / Piercing Whistle" (extremely high frequency ramping whistle to cut noise)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(2300, now);
+      osc.frequency.linearRampToValueAtTime(2700, now + 0.45);
+      
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.45);
+    }
+  } catch (err) {
+    console.warn("Could not play sound:", err);
+  }
+};
+
+const COLOR_PRESETS: Record<string, { bg: string; hover: string; text: string; border: string; hex: string; label: string; labelPt: string }> = {
+  orange: { bg: "bg-[#FF5C00]", hover: "hover:bg-[#FF5C00]/10", text: "text-[#FF5C00]", border: "border-[#FF5C00]", hex: "#FF5C00", label: "Orange / Laranja", labelPt: "Laranja" },
+  red: { bg: "bg-[#EA1D2C]", hover: "hover:bg-[#EA1D2C]/10", text: "text-[#EA1D2C]", border: "border-[#EA1D2C]", hex: "#EA1D2C", label: "Red / Vermelho", labelPt: "Vermelho" },
+  yellow: { bg: "bg-[#FFAA00]", hover: "hover:bg-[#FFAA00]/10", text: "text-[#FFAA00]", border: "border-[#FFAA00]", hex: "#FFAA00", label: "Yellow / Amarelo", labelPt: "Amarelo" },
+  indigo: { bg: "bg-[#4F46E5]", hover: "hover:bg-[#4F46E5]/10", text: "text-[#4F46E5]", border: "border-[#4F46E5]", hex: "#4F46E5", label: "Indigo / Azul Escuro", labelPt: "Azul Escuro" },
+  emerald: { bg: "bg-[#10B981]", hover: "hover:bg-[#10B981]/10", text: "text-[#10B981]", border: "border-[#10B981]", hex: "#10B981", label: "Green / Verde", labelPt: "Verde" },
+  pink: { bg: "bg-[#EC4899]", hover: "hover:bg-[#EC4899]/10", text: "text-[#EC4899]", border: "border-[#EC4899]", hex: "#EC4899", label: "Rose / Rosa", labelPt: "Rosa" },
+  purple: { bg: "bg-[#8B5CF6]", hover: "hover:bg-[#8B5CF6]/10", text: "text-[#8B5CF6]", border: "border-[#8B5CF6]", hex: "#8B5CF6", label: "Purple / Roxo", labelPt: "Roxo" },
+  teal: { bg: "bg-[#0D9488]", hover: "hover:bg-[#0D9488]/10", text: "text-[#0D9488]", border: "border-[#0D9488]", hex: "#0D9488", label: "Teal / Azul-Verde", labelPt: "Azul-Verde" },
+};
 
 interface OrdersBentoProps {
   language: "en" | "pt";
   onConfigure: (channelKey?: string) => void;
+  onSelectChannel?: (channelKey: string) => void;
 }
 
-export default function OrdersBento({ language, onConfigure }: OrdersBentoProps) {
+export default function OrdersBento({ language, onConfigure, onSelectChannel }: OrdersBentoProps) {
   // Read state from LocalStorage so it's fully shared and persistent
   const [integrations, setIntegrations] = useState<Record<string, boolean>>({
     ifood: true,
@@ -25,8 +153,34 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
     website: true
   });
 
+  const [channelConfigs, setChannelConfigs] = useState<Record<string, { 
+    apiBaseUrl: string;
+    amoToken: string;
+    restaurantId: string;
+    autoAccept?: boolean;
+    clientId?: string;
+    clientSecret?: string;
+    customName?: string;
+    customColor?: string;
+    notificationSound?: string;
+    customIcon?: string;
+  }>>(() => {
+    try {
+      const saved = safeStorage.getItem("orders_channel_configs");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    
+    return {
+      ifood: { apiBaseUrl: "https://merchant-api.ifood.com.br", amoToken: "", restaurantId: "IF-82910", clientId: "", clientSecret: "", customName: "iFood", customColor: "red", notificationSound: "chime", customIcon: "Truck", autoAccept: false },
+      amo: { apiBaseUrl: "https://api.uat.amo.delivery", amoToken: "", restaurantId: "", clientId: "", clientSecret: "", customName: "AMO", customColor: "orange", notificationSound: "ping", customIcon: "Truck", autoAccept: false },
+      "99food": { apiBaseUrl: "https://api.food.99app.com/v1", amoToken: "", restaurantId: "99F-4910", customName: "99Food", customColor: "yellow", notificationSound: "beep", customIcon: "Truck", autoAccept: false },
+      website: { apiBaseUrl: "https://api.mywebstore.com/v1", amoToken: "", restaurantId: "WEB-7821", customName: "Website", customColor: "indigo", notificationSound: "kaching", customIcon: "Globe", autoAccept: false },
+    };
+  });
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedCustomerProfile, setSelectedCustomerProfile] = useState<{ customerName: string; order?: Order } | null>(null);
   const [selectedChannelForPopup, setSelectedChannelForPopup] = useState<{
     key: string;
     name: string;
@@ -45,7 +199,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
   useEffect(() => {
     const handleSync = () => {
       try {
-        const savedInts = localStorage.getItem("orders_integrations");
+        const savedInts = safeStorage.getItem("orders_integrations");
         if (savedInts) {
           setIntegrations(current => {
             const parsed = JSON.parse(savedInts);
@@ -58,7 +212,20 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
       } catch {}
 
       try {
-        const savedOrders = localStorage.getItem("orders_list");
+        const savedConfigs = safeStorage.getItem("orders_channel_configs");
+        if (savedConfigs) {
+          setChannelConfigs(current => {
+            const parsed = JSON.parse(savedConfigs);
+            if (JSON.stringify(current) === JSON.stringify(parsed)) {
+              return current;
+            }
+            return parsed;
+          });
+        }
+      } catch {}
+
+      try {
+        const savedOrders = safeStorage.getItem("orders_list");
         if (savedOrders) {
           setOrders(current => {
             const parsed = JSON.parse(savedOrders);
@@ -76,7 +243,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
     return () => window.removeEventListener("storage", handleSync);
   }, []);
 
-  // Detect when new orders are added to any channel (especially AMO) and trigger the flashing yellow effect
+  // Detect when new orders are added to any channel (especially AMO) and trigger the flashing yellow effect, play sound 4 times, and handle auto-accept
   useEffect(() => {
     const prevOrders = prevOrdersRef.current;
     if (prevOrders && prevOrders.length > 0) {
@@ -91,11 +258,45 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
         const timer = setTimeout(() => {
           setFlashingChannels({});
         }, 5000); // Pulse gold for 5 seconds to draw high attention
+
+        // Play configured sound 4 times and auto accept if configured
+        newOrders.forEach(o => {
+          const soundName = channelConfigs[o.channel]?.notificationSound || 
+                            (o.channel === "ifood" ? "chime" : o.channel === "amo" ? "ping" : o.channel === "99food" ? "beep" : "kaching");
+          
+          // Play 4 times with an interval
+          let playCount = 0;
+          const playNext = () => {
+            if (playCount < 4) {
+              playSynthSound(soundName);
+              playCount++;
+              setTimeout(playNext, 850);
+            }
+          };
+          playNext();
+
+          // Auto accept after 5 seconds if enabled in settings
+          const isAutoAccept = channelConfigs[o.channel]?.autoAccept;
+          if (isAutoAccept) {
+            setTimeout(() => {
+              setOrders(latestOrders => {
+                const currentOrder = latestOrders.find(lo => lo.id === o.id);
+                if (currentOrder && currentOrder.status === "pending") {
+                  setTimeout(() => {
+                    handleUpdateStatus(currentOrder, "preparing");
+                  }, 0);
+                }
+                return latestOrders;
+              });
+            }, 5000);
+          }
+        });
+
         return () => clearTimeout(timer);
       }
     }
     prevOrdersRef.current = orders;
-  }, [orders]);
+  }, [orders, channelConfigs]);
 
   const [isFetchingAmo, setIsFetchingAmo] = useState(false);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
@@ -117,7 +318,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
     let clientSecret = "";
 
     try {
-      const savedConfigs = localStorage.getItem("orders_channel_configs");
+      const savedConfigs = safeStorage.getItem("orders_channel_configs");
       if (savedConfigs) {
         const parsed = JSON.parse(savedConfigs);
         if (parsed.amo) {
@@ -177,7 +378,9 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
         setOrders(prev => {
           const nonAmo = prev.filter(o => o.channel !== "amo");
           const updated = [...apiOrders, ...nonAmo];
-          localStorage.setItem("orders_list", JSON.stringify(updated));
+          try {
+            safeStorage.setItem("orders_list", JSON.stringify(updated));
+          } catch {}
 
           setTimeout(() => {
             window.dispatchEvent(new Event("storage"));
@@ -210,7 +413,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
         }
       }
     } catch (e: any) {
-      console.error("Pipeline failure in manual/polling:", e.message);
+      console.warn("Pipeline failure in manual/polling:", e.message);
       if (isManualClick) {
         const isFailedToFetch = String(e.message || "").toLowerCase().includes("failed to fetch");
         const msgPt = isFailedToFetch 
@@ -249,7 +452,9 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
   const handleResetSimulatedOrders = () => {
     if (confirm(language === "pt" ? "Deseja redefinir os pedidos simulados?" : "Reset simulated orders?")) {
       setOrders([]);
-      localStorage.setItem("orders_list", JSON.stringify([]));
+      try {
+        safeStorage.setItem("orders_list", JSON.stringify([]));
+      } catch {}
       showToast(language === "pt" ? "Banco de pedidos redefinido!" : "Orders database reset!");
       
       // Dispatch a storage update event for other screens
@@ -273,7 +478,9 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
 
         const updated = orders.map(o => (o.id === order.id ? result.order! : o));
         setOrders(updated);
-        localStorage.setItem("orders_list", JSON.stringify(updated));
+        try {
+          safeStorage.setItem("orders_list", JSON.stringify(updated));
+        } catch {}
         window.dispatchEvent(new Event("storage"));
 
         showToast(
@@ -295,7 +502,9 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
 
     const updated = orders.map(o => (o.id === order.id ? { ...o, status: nextStatus } : o));
     setOrders(updated);
-    localStorage.setItem("orders_list", JSON.stringify(updated));
+    try {
+      safeStorage.setItem("orders_list", JSON.stringify(updated));
+    } catch {}
     window.dispatchEvent(new Event("storage"));
 
     showToast(
@@ -306,7 +515,15 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
   };
 
   const getChannelOrders = (channelKey: string) => {
-    const list = orders.filter(o => o.channel === channelKey);
+    const today = (() => {
+      const d = new Date();
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    })();
+
+    const list = orders.filter(o => o.channel === channelKey && (!o.date || o.date === today));
     // Sort "pending" orders to the very top, and then sort by time descending (latest first)
     return [...list].sort((a, b) => {
       if (a.status === "pending" && b.status !== "pending") return -1;
@@ -315,11 +532,31 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
     });
   };
 
+  const getChannelDetails = (key: string, defaultName: string, defaultColorKey: string, defaultSound: string, desc: string) => {
+    const config = channelConfigs[key] || {};
+    const name = config.customName || defaultName;
+    const colorKey = config.customColor || defaultColorKey;
+    const sound = config.notificationSound || defaultSound;
+    
+    const preset = COLOR_PRESETS[colorKey] || COLOR_PRESETS[defaultColorKey] || COLOR_PRESETS.indigo;
+    
+    return {
+      key,
+      name,
+      color: preset.bg,
+      hover: preset.hover,
+      border: preset.border,
+      text: preset.text,
+      desc,
+      sound,
+    };
+  };
+
   const INT_CHANNELS = [
-    { key: "ifood", name: "iFood", color: "bg-[#EA1D2C]", hover: "hover:bg-[#EA1D2C]/10", border: "border-[#EA1D2C]/25", text: "text-[#EA1D2C]", desc: "iFood Delivery Portal" },
-    { key: "amo", name: "AMO", color: "bg-[#FF5C00]", hover: "hover:bg-[#FF5C00]/10", border: "border-[#FF5C00]/25", text: "text-[#FF5C00]", desc: "AMO Delivery App" },
-    { key: "99food", name: "99Food", color: "bg-[#FFAA00]", hover: "hover:bg-[#FFAA00]/10", border: "border-[#FFAA00]/25", text: "text-[#FFAA00]", desc: "99Food Platform" },
-    { key: "website", name: "Website", color: "bg-[#4F46E5]", hover: "hover:bg-[#4F46E5]/10", border: "border-[#4F46E5]/25", text: "text-[#4F46E5]", desc: "Direct Web Store Storefront" },
+    getChannelDetails("ifood", "iFood", "red", "chime", "iFood Delivery Portal"),
+    getChannelDetails("amo", "AMO", "orange", "ping", "AMO Delivery App"),
+    getChannelDetails("99food", "99Food", "yellow", "beep", "99Food Platform"),
+    getChannelDetails("website", "Website", "indigo", "kaching", "Direct Web Store Storefront"),
   ];
 
   const activeCount = Object.values(integrations).filter(Boolean).length;
@@ -398,14 +635,19 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
         {INT_CHANNELS.map(ch => {
           const isActive = !!integrations[ch.key];
           const chanOrders = getChannelOrders(ch.key);
-          const totalRevenue = chanOrders.reduce((sum, o) => sum + o.total, 0);
+          const activeChanOrders = chanOrders.filter(o => o.status !== "cancelled");
+          const totalRevenue = activeChanOrders.reduce((sum, o) => sum + o.total, 0);
 
           return (
             <div
               key={ch.key}
               onClick={() => {
                 if (isActive) {
-                  setSelectedChannelForPopup(ch);
+                  if (onSelectChannel) {
+                    onSelectChannel(ch.key);
+                  } else {
+                    setSelectedChannelForPopup(ch);
+                  }
                 } else {
                   showToast(
                     language === "pt" 
@@ -445,7 +687,7 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
                 {isActive ? (
                   <div className="space-y-1.5 text-right w-full">
                     <h4 className="text-sm font-black text-slate-800 leading-none font-mono">
-                      {chanOrders.length} {language === "pt" ? "pedidos" : "orders"}
+                      {activeChanOrders.length} {language === "pt" ? "pedidos" : "orders"}
                     </h4>
                     <div className="border-t border-slate-100/50" />
                     <div className="flex justify-end">
@@ -513,30 +755,129 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100 font-mono text-xs">
-                  {getChannelOrders(selectedChannelForPopup.key).map((order) => (
-                    <div 
-                      key={order.id} 
-                      className="py-3 flex flex-wrap sm:flex-nowrap items-center justify-between text-[11px] sm:text-xs text-slate-800 gap-2.5"
-                    >
-                      {/* Strictly ordered: 1. order number, 2. customer name */}
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <span className="font-bold text-slate-900 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                          {order.id}
-                        </span>
-                        <div className="min-w-0">
-                          <span className="text-slate-600 font-sans font-medium truncate block">
-                            {order.customerName}
+                  {getChannelOrders(selectedChannelForPopup.key).map((order) => {
+                    const orderTiming = 
+                      order.orderTiming ||
+                      order.amoData?.orderTiming || 
+                      order.amoData?.order_timing || 
+                      order.amoData?.scheduling?.orderTiming || 
+                      order.amoData?.scheduling?.order_timing || 
+                      (order.scheduledDateTimeStart || order.amoData?.scheduledDateTimeStart || order.amoData?.scheduled_date_time_start || order.amoData?.delivery?.deliveryDateTime ? "SCHEDULED" : "IMMEDIATE");
+
+                    const isScheduled = orderTiming === "SCHEDULED";
+
+                    const scheduledTime = isScheduled ? (
+                      order.scheduledDateTimeStart ||
+                      order.amoData?.scheduledDateTimeStart || 
+                      order.amoData?.scheduled_date_time_start || 
+                      order.amoData?.scheduling?.scheduledDateTimeStart || 
+                      order.amoData?.scheduling?.scheduled_date_time_start || 
+                      order.amoData?.delivery?.deliveryDateTime || 
+                      order.amoData?.delivery?.delivery_date_time || 
+                      order.amoData?.deliveryDateTime || 
+                      order.amoData?.delivery_date_time
+                    ) : null;
+
+                    const formatLocalTime = (utcString: string) => {
+                      try {
+                        const date = new Date(utcString);
+                        if (isNaN(date.getTime())) return "";
+                        const hours = String(date.getHours()).padStart(2, "0");
+                        const minutes = String(date.getMinutes()).padStart(2, "0");
+                        return `${hours}:${minutes}`;
+                      } catch (err) {
+                        return "";
+                      }
+                    };
+
+                    return (
+                      <div 
+                        key={order.id} 
+                        className="py-3 flex flex-wrap sm:flex-nowrap items-center justify-between text-[11px] sm:text-xs text-slate-800 gap-2.5"
+                      >
+                        {/* Strictly ordered: 1. order number, 2. customer name */}
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="font-bold text-slate-900 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                            {order.id}
                           </span>
-                          {order.amoData && (
-                            <span className="text-[10px] text-slate-400 truncate block">
-                              {(order.amoData as any).customer?.email || ""}
-                              {(order.amoData as any).customer?.phone?.number
-                                ? ` · ${(order.amoData as any).customer.phone.number}`
-                                : ""}
-                            </span>
-                          )}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span 
+                                onClick={() => setSelectedCustomerProfile({ customerName: order.customerName, order })}
+                                className="text-slate-900 font-sans font-medium truncate block hover:text-indigo-600 cursor-pointer hover:underline transition-colors"
+                                title={language === "pt" ? "Ver perfil do cliente" : "View customer profile"}
+                              >
+                                {order.customerName}
+                              </span>
+                              {scheduledTime && (
+                                <div className="inline-flex items-center gap-0.5 text-emerald-600 bg-emerald-50 border border-emerald-100 px-1 py-0.5 rounded text-[9.5px] font-bold animate-pulse" title={language === "pt" ? "Pedido Agendado" : "Scheduled Order"}>
+                                  <AlarmClock className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                                  <span className="font-mono">{formatLocalTime(scheduledTime)}</span>
+                                </div>
+                              )}
+                            </div>
+                            {(() => {
+                              const amo = order.amoData as any;
+                              const addressObj = amo?.delivery?.deliveryAddress;
+                              const formatted = addressObj?.formattedAddress;
+
+                              const rawType = (order.type || "delivery").toLowerCase();
+                              const isDelivery = rawType === "delivery";
+
+                              if (isDelivery || formatted) {
+                                const coords = addressObj?.coordinates;
+                                const hasCoords = coords?.latitude && coords?.longitude;
+                                const mapsUrl = hasCoords
+                                  ? `https://www.google.com/maps/search/?api=1&query=${coords.latitude},${coords.longitude}`
+                                  : formatted ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formatted)}` : "";
+
+                                return (
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="text-[10px] text-slate-500 font-semibold truncate block flex items-center gap-1 w-fit">
+                                      {formatted ? (
+                                        <>
+                                          <a
+                                            href={mapsUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-0.5 hover:bg-emerald-100/50 rounded transition-colors group cursor-pointer flex items-center justify-center shrink-0"
+                                            title={language === "pt" ? "Ver no Google Maps" : "View on Google Maps"}
+                                          >
+                                            <MapPin className="w-3 h-3 text-emerald-500 group-hover:scale-110 transition-transform shrink-0" />
+                                          </a>
+                                          <span className="truncate" title={formatted}>{formatted}</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Truck className="w-3 h-3 text-blue-400 shrink-0" />
+                                          <span>{language === "pt" ? "Entrega" : "Delivery"}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              } else if (order.type === "pickup") {
+                                return (
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-[10px] text-purple-500 font-semibold truncate block flex items-center gap-1">
+                                      <MapPin className="w-3 h-3 text-purple-400 shrink-0" />
+                                      <span>{language === "pt" ? "Retirada (Takeout)" : "Takeout"}</span>
+                                    </span>
+                                  </div>
+                                );
+                              } else if (order.type === "dine_in") {
+                                return (
+                                  <span className="text-[10px] text-indigo-500 font-semibold truncate block flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-indigo-400 shrink-0" />
+                                    <span>{language === "pt" ? "Consumo no Local" : "Dine In (Table)"}</span>
+                                  </span>
+                                );
+                              }
+                              return null;
+                            })()}
+
+                          </div>
                         </div>
-                      </div>
 
                       {/* Right-aligned section with interactive status actions */}
                       <div className="flex items-center gap-2.5 shrink-0 ml-auto">
@@ -574,12 +915,21 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
                         </span>
 
                         {/* 4. Order Value Column */}
-                        <span className="font-bold text-slate-900 min-w-[65px] text-right font-sans">
-                          {formatCurrency(order.total)}
-                        </span>
+                        <div className="flex flex-col items-end text-right min-w-[75px] shrink-0">
+                          <div className="text-[9px] text-slate-400 font-medium leading-none">
+                            {language === "pt" ? "Itens" : "Items"}: <span className="font-mono font-bold text-slate-600">{formatCurrency((order.amoData as any)?.total?.itemsPrice?.value ?? order.total)}</span>
+                          </div>
+                          <div className="text-[9px] text-slate-400 font-medium leading-none mt-1">
+                            {language === "pt" ? "Entrega" : "Delivery"}: <span className="font-mono font-bold text-slate-600">{formatCurrency((order.amoData as any)?.total?.otherFees?.value ?? 0)}</span>
+                          </div>
+                          <span className="font-black text-slate-900 font-sans mt-1.5 text-xs">
+                            {formatCurrency(order.total)}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               )}
             </div>
@@ -596,6 +946,203 @@ export default function OrdersBento({ language, onConfigure }: OrdersBentoProps)
           </div>
         </div>
       )}
+
+      {/* Customer Profile Popup Modal */}
+      {selectedCustomerProfile && (() => {
+        const { customerName, order } = selectedCustomerProfile;
+        
+        // 1. Calculate statistics
+        const customerOrders = orders.filter(
+          (o) => o.customerName.toLowerCase() === customerName.toLowerCase()
+        );
+        const totalOrders = customerOrders.length;
+        
+        const sorted = [...customerOrders].sort((a, b) => {
+          const dateA = a.date || "";
+          const dateB = b.date || "";
+          if (dateA !== dateB) return dateB.localeCompare(dateA);
+          const timeA = a.time || "";
+          const timeB = b.time || "";
+          return timeB.localeCompare(timeA);
+        });
+        
+        const lastOrder = sorted[0];
+        let lastPurchaseDate = "-";
+        if (lastOrder) {
+          const rawDate = lastOrder.date || "";
+          if (rawDate) {
+            const parts = rawDate.split("-");
+            if (parts.length === 3) {
+              lastPurchaseDate = language === "pt" 
+                ? `${parts[2]}/${parts[1]}/${parts[0]}` 
+                : `${parts[1]}/${parts[2]}/${parts[0]}`;
+            } else {
+              lastPurchaseDate = rawDate;
+            }
+          } else {
+            lastPurchaseDate = language === "pt" ? "Hoje" : "Today";
+          }
+        }
+
+        // 2. Resolve email, phone, and CPF (documentNumber)
+        let email = "";
+        let phone = "";
+        let cpf = "";
+        for (const o of customerOrders) {
+          const amo = o.amoData as any;
+          if (amo?.customer?.email) {
+            email = amo.customer.email;
+          }
+          if (amo?.customer?.phone?.number) {
+            phone = amo.customer.phone.number;
+          } else if (amo?.customer?.phone) {
+            phone = typeof amo.customer.phone === "string" ? amo.customer.phone : amo.customer.phone.number || "";
+          }
+          if (amo?.customer?.documentNumber) {
+            const val = String(amo.customer.documentNumber).trim();
+            if (val && val.toLowerCase() !== "null") {
+              cpf = val;
+            }
+          }
+          if (email && phone && cpf) break;
+        }
+
+        if (order) {
+          const amo = order.amoData as any;
+          if (!email && amo?.customer?.email) email = amo.customer.email;
+          if (!phone && amo?.customer?.phone?.number) phone = amo.customer.phone.number;
+          if (!cpf && amo?.customer?.documentNumber) {
+            const val = String(amo.customer.documentNumber).trim();
+            if (val && val.toLowerCase() !== "null") cpf = val;
+          }
+        }
+
+        if (!email) {
+          const emailName = customerName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ".");
+          email = `${emailName}@gmail.com`;
+        }
+        if (!phone) {
+          let hash = 0;
+          for (let i = 0; i < customerName.length; i++) {
+            hash = customerName.charCodeAt(i) + ((hash << 5) - hash);
+          }
+          const randPart1 = Math.abs((hash % 9000) + 1000);
+          const randPart2 = Math.abs(((hash >> 3) % 9000) + 1000);
+          phone = `(11) 9${randPart1}-${randPart2}`;
+        }
+
+        // Formatters
+        const formatPhone = (phoneVal: string): string => {
+          if (!phoneVal) return "";
+          let cleaned = phoneVal.replace(/\D/g, "");
+          if (cleaned.startsWith("55") && (cleaned.length === 12 || cleaned.length === 13)) {
+            cleaned = cleaned.substring(2);
+          }
+          if (cleaned.length === 11) {
+            return cleaned.replace(/(\d{2})(\d{1})(\d{4})(\d{4})/, "($1) $2-$3-$4");
+          } else if (cleaned.length === 10) {
+            return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
+          }
+          return phoneVal;
+        };
+
+        const formatCPF = (cpfVal: string): string => {
+          if (!cpfVal) return "";
+          const cleaned = cpfVal.replace(/\D/g, "");
+          if (cleaned.length === 11) {
+            return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+          }
+          return cpfVal;
+        };
+
+        const getWhatsAppLink = (phoneVal: string): string => {
+          if (!phoneVal) return "#";
+          let cleaned = phoneVal.replace(/\D/g, "");
+          if (!cleaned.startsWith("55") && (cleaned.length === 10 || cleaned.length === 11)) {
+            cleaned = "55" + cleaned;
+          }
+          return `https://api.whatsapp.com/send/?phone=${cleaned}`;
+        };
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[90] p-4 animate-fade-in" onClick={() => setSelectedCustomerProfile(null)}>
+            <div className="bg-white border border-slate-100 rounded-3xl max-w-sm w-full p-6 shadow-xl relative animate-scale-up text-left" onClick={(e) => e.stopPropagation()}>
+              <button 
+                onClick={() => setSelectedCustomerProfile(null)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer p-1 rounded-lg hover:bg-slate-50 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 bg-gradient-to-tr from-indigo-50 to-indigo-100/50 rounded-2xl flex items-center justify-center border border-indigo-100/50 text-indigo-500 shadow-2xs shrink-0">
+                  <User className="w-7 h-7 text-indigo-600" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-sans font-bold text-slate-900 text-base leading-snug break-words">
+                    {customerName}
+                  </h3>
+                  <span className="text-xs text-slate-500 font-medium break-all block mt-0.5">
+                    {email}
+                  </span>
+                  {cpf && (
+                    <span className="text-xs text-slate-500 font-medium block mt-0.5">
+                      CPF: <span className="font-mono">{formatCPF(cpf)}</span>
+                    </span>
+                  )}
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <a
+                      href={getWhatsAppLink(phone)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center p-1 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-all cursor-pointer shadow-3xs group shrink-0"
+                      title={language === "pt" ? "Enviar mensagem no WhatsApp" : "Send WhatsApp message"}
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" style={{ color: "rgb(29, 170, 97)" }} />
+                    </a>
+                    <span className="text-xs text-slate-400 font-mono">
+                      {formatPhone(phone)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 my-5"></div>
+
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                  {language === "pt" ? "Estatísticas de Consumo" : "Consumption Stats"}
+                </h4>
+                <div className="flex gap-3">
+                  <div className="flex-1 bg-slate-50 border border-slate-100/80 rounded-2xl p-4 text-center">
+                    <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider mb-1 block leading-snug">
+                      {language === "pt" ? "Pedidos na Loja" : "Store Orders"}
+                    </span>
+                    <span className="text-2xl font-black text-indigo-600 font-mono">
+                      {totalOrders}
+                    </span>
+                  </div>
+                  <div className="flex-1 bg-slate-50 border border-slate-100/80 rounded-2xl p-4 text-center">
+                    <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider mb-1 block leading-snug">
+                      {language === "pt" ? "Última Compra" : "Last Purchase"}
+                    </span>
+                    <span className="text-xs font-bold text-slate-700 font-mono mt-1.5 block">
+                      {lastPurchaseDate}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setSelectedCustomerProfile(null)}
+                className="w-full mt-6 px-4 py-2.5 bg-slate-950 text-white text-xs font-bold rounded-xl hover:bg-slate-900 transition-colors shadow-xs cursor-pointer text-center"
+              >
+                {language === "pt" ? "Fechar" : "Close"}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

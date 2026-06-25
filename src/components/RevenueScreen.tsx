@@ -753,22 +753,22 @@ export default function RevenueScreen({
     <div id="revenue-root-panel" className="space-y-6 animate-fade-in text-slate-800">
       
       {/* HEADER SECTION */}
-      <div id="revenue-header" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-        <div className="flex items-center gap-3">
+      <div id="revenue-header" className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-4">
           <button
             id="back-to-dashboard-btn"
             onClick={onBack}
-            className="p-2.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center"
-            title="Back to Dashboard"
+            className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 active:bg-slate-100 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
+            title={language === "pt" ? "Voltar ao Início" : "Back to Home"}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               <Store className="w-5 h-5 text-emerald-600 shrink-0" />
-              {language === "pt" ? "Painel de Faturamento" : "Revenue Operations Center"}
-            </h2>
-            <p className="text-[11px] text-slate-400 font-medium">
+              <span>{language === "pt" ? "Painel de Faturamento" : "Revenue Operations Center"}</span>
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
               {language === "pt" 
                 ? "Gestão integrada de vendas corporativas, canais parceiros e auditorias de lucros reais" 
                 : "Continuous corporate sales logging, partner integration audit, and margins control pipeline"}

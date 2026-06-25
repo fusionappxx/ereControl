@@ -169,20 +169,20 @@ export default function UniqueInvoicesScreen({
   return (
     <div className="space-y-6">
       {/* Top Header Row with Navigate Back Button */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-100 dark:border-slate-800 transition-colors">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800 transition-colors">
+        <div className="flex items-center gap-4">
           <button
             onClick={onBack}
-            className="p-2 -ml-2 text-slate-550 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer flex items-center justify-center"
+            className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 active:bg-slate-100 dark:active:bg-slate-700 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
             title={isPt ? "Voltar para Início" : "Return to Home"}
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight leading-none">
+            <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
               {isPt ? "Painel de Notas Fiscais" : "Registered Invoices Database"}
             </h1>
-            <p className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-1">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
               {isPt 
                 ? "Resumo detalhado por cupons, valores de compras, estabelecimentos e itens importados"
                 : "A granular aggregation of store trips, invoice receipts, total quantities, and expenditure"}

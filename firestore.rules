@@ -88,6 +88,16 @@ service cloud.firestore {
         || (data.keys().hasAll(['activeStoreId', 'stores']) && data.stores is list);
     }
 
+    function isValidVolumeAndAppTax(data) {
+      return data.keys().hasAll(['monthlyVolume', 'amoTax', 'ifoodTax', 'tax99Food', 'siteTax'])
+        && data.keys().size() <= 5
+        && data.monthlyVolume is number
+        && data.amoTax is number
+        && data.ifoodTax is number
+        && data.tax99Food is number
+        && data.siteTax is number;
+    }
+
     function isValidSalesLog(data) {
       return data.keys().hasAll(['id', 'saleDate', 'recipeId', 'recipeName', 'portionsSold', 'channelName', 'taxApplied', 'salePrice', 'totalPrice', 'rawCost', 'netProfit', 'createdAt'])
         && data.keys().size() <= 12
@@ -142,7 +152,8 @@ service cloud.firestore {
       allow read: if true;
       allow write: if (settingId == "production_costs" && isValidProductionCosts(request.resource.data))
                    || (settingId == "inventory" && isValidInventorySettings(request.resource.data))
-                   || (settingId == "store_config" && isValidStoreConfig(request.resource.data));
+                   || (settingId == "store_config" && isValidStoreConfig(request.resource.data))
+                   || (settingId == "volume_and_app_tax" && isValidVolumeAndAppTax(request.resource.data));
     }
 
     match /sales_logs/{saleId} {

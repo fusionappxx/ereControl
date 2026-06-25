@@ -20,7 +20,7 @@ import {
   Upload
 } from "lucide-react";
 import { ReceiptItem } from "../types";
-import { formatCurrency, getGlobalCurrency, parseVolumeOrWeight } from "../utils";
+import { formatCurrency, getGlobalCurrency, parseVolumeOrWeight, safeStorage } from "../utils";
 import { doc, onSnapshot, setDoc, collection, deleteDoc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import FixedExpensesScreen from "./FixedExpensesScreen";
@@ -71,10 +71,12 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
   // Tab control state
   const [activeSubTab, setActiveSubTab] = useState<'recipe-costing' | 'volume-tax' | 'fixed-expenses' | 'production-costs'>(() => {
     if (initialSubTab) return initialSubTab;
-    const saved = localStorage.getItem("costing_sheets_initial_subtab");
-    if (saved === 'volume-tax' || saved === 'fixed-expenses' || saved === 'production-costs') {
-      return saved as 'recipe-costing' | 'volume-tax' | 'fixed-expenses' | 'production-costs';
-    }
+    try {
+      const saved = safeStorage.getItem("costing_sheets_initial_subtab");
+      if (saved === 'volume-tax' || saved === 'fixed-expenses' || saved === 'production-costs') {
+        return saved as 'recipe-costing' | 'volume-tax' | 'fixed-expenses' | 'production-costs';
+      }
+    } catch {}
     return 'recipe-costing';
   });
 
@@ -98,11 +100,11 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
     const unsubscribe = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        setMonthlyVolume(Number(data.monthlyVolume) || 1500);
-        setAmoTax(Number(data.amoTax) !== undefined ? Number(data.amoTax) : 10);
-        setIfoodTax(Number(data.ifoodTax) !== undefined ? Number(data.ifoodTax) : 23);
-        setTax99Food(Number(data.tax99Food) !== undefined ? Number(data.tax99Food) : 25);
-        setSiteTax(Number(data.siteTax) !== undefined ? Number(data.siteTax) : 5);
+        setMonthlyVolume(data.monthlyVolume !== undefined ? Number(data.monthlyVolume) : 1500);
+        setAmoTax(data.amoTax !== undefined ? Number(data.amoTax) : 10);
+        setIfoodTax(data.ifoodTax !== undefined ? Number(data.ifoodTax) : 23);
+        setTax99Food(data.tax99Food !== undefined ? Number(data.tax99Food) : 25);
+        setSiteTax(data.siteTax !== undefined ? Number(data.siteTax) : 5);
       }
     }, (err) => {
       console.error("Error subscribing to Volume and App Tax settings:", err);
@@ -783,21 +785,21 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
   return (
     <div className="space-y-6">
       {/* Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-4">
           <button
             onClick={onBack}
-            className="p-2.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center"
-            title="Go back"
+            className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 active:bg-slate-100 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
+            title={language === "pt" ? "Voltar ao Início" : "Back to Home"}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
               <ChefHat className="w-5.5 h-5.5 text-amber-550" />
-              {language === "pt" ? "Fichas Técnicas Integradas" : "Recipe Costing Sheets"}
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
+              <span>{language === "pt" ? "Fichas Técnicas Integradas" : "Recipe Costing Sheets"}</span>
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
               {language === "pt"
                 ? "Calcule insumos e amortize despesas fixas e utilidades diretas na precificação exata do produto"
                 : "Formulate physical recipe items, matching portion sizes with smart automated overhead distributions"}
@@ -811,7 +813,9 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
         <button
           onClick={() => {
             setActiveSubTab('recipe-costing');
-            localStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+            try {
+              safeStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+            } catch {}
           }}
           className={`px-4 py-2 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
             activeSubTab === 'recipe-costing'
@@ -825,7 +829,9 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
         <button
           onClick={() => {
             setActiveSubTab('volume-tax');
-            localStorage.setItem("costing_sheets_initial_subtab", "volume-tax");
+            try {
+              safeStorage.setItem("costing_sheets_initial_subtab", "volume-tax");
+            } catch {}
           }}
           className={`px-4 py-2 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
             activeSubTab === 'volume-tax'
@@ -839,7 +845,9 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
         <button
           onClick={() => {
             setActiveSubTab('fixed-expenses');
-            localStorage.setItem("costing_sheets_initial_subtab", "fixed-expenses");
+            try {
+              safeStorage.setItem("costing_sheets_initial_subtab", "fixed-expenses");
+            } catch {}
           }}
           className={`px-4 py-2 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
             activeSubTab === 'fixed-expenses'
@@ -853,7 +861,9 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
         <button
           onClick={() => {
             setActiveSubTab('production-costs');
-            localStorage.setItem("costing_sheets_initial_subtab", "production-costs");
+            try {
+              safeStorage.setItem("costing_sheets_initial_subtab", "production-costs");
+            } catch {}
           }}
           className={`px-4 py-2 text-xs font-bold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
             activeSubTab === 'production-costs'
@@ -1717,7 +1727,9 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
             language={language}
             onBack={() => {
               setActiveSubTab('recipe-costing');
-              localStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+              try {
+                safeStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+              } catch {}
             }}
             hideHeader={true}
           />
@@ -1730,7 +1742,9 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
             language={language}
             onBack={() => {
               setActiveSubTab('recipe-costing');
-              localStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+              try {
+                safeStorage.setItem("costing_sheets_initial_subtab", "recipe-costing");
+              } catch {}
             }}
             hideHeader={true}
           />

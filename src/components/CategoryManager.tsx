@@ -9,7 +9,8 @@ import {
   HelpCircle, 
   Search,
   Settings,
-  Sparkles
+  Sparkles,
+  ArrowLeft
 } from "lucide-react";
 import { ReceiptItem } from "../types";
 
@@ -23,6 +24,7 @@ interface CategoryManagerProps {
   onClearRules: () => void;
   items?: ReceiptItem[];
   language?: "en" | "pt";
+  onBack: () => void;
 }
 
 export default function CategoryManager({
@@ -34,7 +36,8 @@ export default function CategoryManager({
   onDeleteRule,
   onClearRules,
   items = [],
-  language = "en"
+  language = "en",
+  onBack
 }: CategoryManagerProps) {
   // Local Category states
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -114,18 +117,32 @@ export default function CategoryManager({
   });
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800 shadow-xs transition-colors">
-        <div className="flex items-center gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-4 mb-6">
-          <div className="bg-emerald-500/10 p-2.5 rounded-xl border border-emerald-500/20 shadow-xs">
-            <Tag className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-          </div>
+    <div className="space-y-6 animate-fade-in">
+      {/* Standardized Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800 transition-colors">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-700 active:bg-slate-100 dark:active:bg-slate-700 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center animate-fade-in"
+            title={language === "pt" ? "Voltar" : "Go Back"}
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
           <div>
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Category Management Drawer</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Define shopping categories and set identical product automation workflows</p>
+            <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+              <Tag className="w-5.5 h-5.5 text-emerald-600 dark:text-emerald-400" />
+              <span>{language === "pt" ? "Controle de Categorias & Automação" : "Category Management Drawer"}</span>
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+              {language === "pt" 
+                ? "Defina categorias de compras e estabeleça regras de vinculação automática para produtos idênticos."
+                : "Define shopping categories and set identical product automation workflows."}
+            </p>
           </div>
         </div>
+      </div>
 
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-100 dark:border-slate-800 shadow-xs transition-colors">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
           {/* Column A: Create & Edit Categories */}
           <div className="md:col-span-6 space-y-6">

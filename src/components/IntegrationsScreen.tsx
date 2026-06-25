@@ -16,14 +16,137 @@ import {
   Play,
   RotateCcw,
   Tag,
+  Copy,
   Globe,
   Truck,
   Layers,
-  FileText
+  FileText,
+  Bell,
+  Store,
+  Coffee,
+  Utensils,
+  ChefHat,
+  Volume2,
+  Palette,
+  Music
 } from "lucide-react";
-import { formatCurrency } from "../utils";
+import { formatCurrency, safeStorage } from "../utils";
 import type { Order } from "../types";
 import { updateAmoOrderStatusViaApi } from "../amoOrders";
+
+const COLOR_PRESETS: Record<string, { bg: string; hover: string; text: string; border: string; hex: string; label: string; labelPt: string }> = {
+  orange: { bg: "bg-[#FF5C00]", hover: "hover:bg-[#FF5C00]/10", text: "text-[#FF5C00]", border: "border-[#FF5C00]", hex: "#FF5C00", label: "Orange / Laranja", labelPt: "Laranja" },
+  red: { bg: "bg-[#EA1D2C]", hover: "hover:bg-[#EA1D2C]/10", text: "text-[#EA1D2C]", border: "border-[#EA1D2C]", hex: "#EA1D2C", label: "Red / Vermelho", labelPt: "Vermelho" },
+  yellow: { bg: "bg-[#FFAA00]", hover: "hover:bg-[#FFAA00]/10", text: "text-[#FFAA00]", border: "border-[#FFAA00]", hex: "#FFAA00", label: "Yellow / Amarelo", labelPt: "Amarelo" },
+  indigo: { bg: "bg-[#4F46E5]", hover: "hover:bg-[#4F46E5]/10", text: "text-[#4F46E5]", border: "border-[#4F46E5]", hex: "#4F46E5", label: "Indigo / Azul Escuro", labelPt: "Azul Escuro" },
+  emerald: { bg: "bg-[#10B981]", hover: "hover:bg-[#10B981]/10", text: "text-[#10B981]", border: "border-[#10B981]", hex: "#10B981", label: "Green / Verde", labelPt: "Verde" },
+  pink: { bg: "bg-[#EC4899]", hover: "hover:bg-[#EC4899]/10", text: "text-[#EC4899]", border: "border-[#EC4899]", hex: "#EC4899", label: "Rose / Rosa", labelPt: "Rosa" },
+  purple: { bg: "bg-[#8B5CF6]", hover: "hover:bg-[#8B5CF6]/10", text: "text-[#8B5CF6]", border: "border-[#8B5CF6]", hex: "#8B5CF6", label: "Purple / Roxo", labelPt: "Roxo" },
+  teal: { bg: "bg-[#0D9488]", hover: "hover:bg-[#0D9488]/10", text: "text-[#0D9488]", border: "border-[#0D9488]", hex: "#0D9488", label: "Teal / Azul-Verde", labelPt: "Azul-Verde" },
+};
+
+const playSynthSound = (soundName: string) => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const now = ctx.currentTime;
+    
+    if (soundName === "ding") {
+      // "Buzina de Alerta / Double Alert Horn" (industrial alert alarm - dual frequency square wave)
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      
+      osc1.type = "square";
+      osc1.frequency.setValueAtTime(980, now);
+      
+      osc2.type = "square";
+      osc2.frequency.setValueAtTime(1020, now);
+      
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+      
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc1.start(now);
+      osc2.start(now);
+      
+      osc1.stop(now + 0.65);
+      osc2.stop(now + 0.65);
+    } else if (soundName === "beep") {
+      // "Alarme de Impressora / Printer Buzzer" (harsh rapid repeating sawtooth sound)
+      const numBeeps = 4;
+      for (let i = 0; i < numBeeps; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(1600, now + i * 0.14);
+        gain.gain.setValueAtTime(0.3, now + i * 0.14);
+        gain.gain.setValueAtTime(0.001, now + i * 0.14 + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.14);
+        osc.stop(now + i * 0.14 + 0.09);
+      }
+    } else if (soundName === "kaching") {
+      // "Campainha de Mesa / Restaurant Bell" (loud repeating metallic ringing bell)
+      const numRings = 5;
+      for (let i = 0; i < numRings; i++) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(2100, now + i * 0.08);
+        gain.gain.setValueAtTime(0.4, now + i * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.07);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + i * 0.08);
+        osc.stop(now + i * 0.08 + 0.07);
+      }
+    } else if (soundName === "chime") {
+      // "Sirene de Cozinha / Kitchen Siren" (rapid, highly strident pulsing square wave alarm)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      
+      // rapid sound pitch changes (wobble)
+      osc.frequency.setValueAtTime(1100, now);
+      osc.frequency.setValueAtTime(1350, now + 0.1);
+      osc.frequency.setValueAtTime(1100, now + 0.2);
+      osc.frequency.setValueAtTime(1350, now + 0.3);
+      osc.frequency.setValueAtTime(1100, now + 0.4);
+      osc.frequency.setValueAtTime(1350, now + 0.5);
+      
+      gain.gain.setValueAtTime(0.35, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.6);
+    } else if (soundName === "ping") {
+      // "Apito Penetrante / Piercing Whistle" (extremely high frequency ramping whistle to cut noise)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(2300, now);
+      osc.frequency.linearRampToValueAtTime(2700, now + 0.45);
+      
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.45);
+    }
+  } catch (err) {
+    console.warn("Could not play sound:", err);
+  }
+};
 
 interface IntegrationsScreenProps {
   language: "en" | "pt";
@@ -38,21 +161,34 @@ const CUSTOMERS = [
 ];
 
 const MENU_ITEMS = [
-  { text: "1x Truffle Burger Combo, 1x Vanilla Milkshake", cost: 42.90 },
-  { text: "2x Artisanal Pizza Margherita, 1x Coke Zero", cost: 68.00 },
-  { text: "1x Salmon Poke Bowl with Mango & Avocado", cost: 38.50 },
-  { text: "1x Chocolate Fudge Brownie, 1x Espresso Latte", cost: 24.50 },
-  { text: "1x Crispy Chicken Caesar Salad, 1x Sparkling Water", cost: 35.00 },
-  { text: "1x Vegetarian Wrap, 1x Green Juice", cost: 29.90 },
-  { text: "2x Double Beef Smashed Burgers, 2x French Fries", cost: 79.90 },
-  { text: "1x Strawberry Waffle with Ice Cream", cost: 22.00 }
+  { text: "1x Truffle Burger Combo (Bem passado), 1x Vanilla Milkshake (Sem chantilly)", cost: 42.90 },
+  { text: "2x Artisanal Pizza Margherita (Borda com catupiry), 1x Coke Zero (Gelada)", cost: 68.00 },
+  { text: "1x Salmon Poke Bowl with Mango & Avocado (Sem cebola)", cost: 38.50 },
+  { text: "1x Chocolate Fudge Brownie (Aquecido), 1x Espresso Latte (Leite de aveia)", cost: 24.50 },
+  { text: "1x Crispy Chicken Caesar Salad (Molho à parte), 1x Sparkling Water (Com limão)", cost: 35.00 },
+  { text: "1x Vegetarian Wrap (Sem tomate), 1x Green Juice", cost: 29.90 },
+  { text: "2x Double Beef Smashed Burgers (Sem queijo), 2x French Fries (Crocante)", cost: 79.90 },
+  { text: "1x Strawberry Waffle with Ice Cream (Calda extra de morango)", cost: 22.00 }
+];
+
+const SIMULATED_ADDRESSES = [
+  { formattedAddress: "Av. Paulista, 1000 - Bela Vista, São Paulo - SP, 01310-100", latitude: -23.5615, longitude: -46.6562 },
+  { formattedAddress: "Rua das Flores, 123 - Centro, Curitiba - PR, 80010-000", latitude: -25.4297, longitude: -49.2719 },
+  { formattedAddress: "Av. Atlântica, 1702 - Copacabana, Rio de Janeiro - RJ, 22021-001", latitude: -22.9714, longitude: -43.1823 },
+  { formattedAddress: "Rua Augusta, 450 - Consolação, São Paulo - SP, 01304-000", latitude: -23.5505, longitude: -46.6491 },
+  { formattedAddress: "Av. Contorno, 6061 - Savassi, Belo Horizonte - MG, 30110-035", latitude: -19.9386, longitude: -43.9351 },
+  { formattedAddress: "Rua dos Andradas, 950 - Centro Histórico, Porto Alegre - RS, 90020-006", latitude: -30.0301, longitude: -51.2312 },
+  { formattedAddress: "Av. Sete de Setembro, 2300 - Rebouças, Curitiba - PR, 80230-010", latitude: -25.4398, longitude: -49.2642 },
+  { formattedAddress: "Rua Bahia, 512 - Vila Mariana, São Paulo - SP, 04012-012", latitude: -23.5855, longitude: -46.6412 },
+  { formattedAddress: "Av. Beira Mar, 1200 - Meireles, Fortaleza - CE, 60165-121", latitude: -3.7258, longitude: -38.4984 },
+  { formattedAddress: "Rua de Santana, 88 - Centro, São Luís - MA, 65010-380", latitude: -2.5312, longitude: -44.3015 }
 ];
 
 export default function IntegrationsScreen({ language, onBack, initialChannelKey }: IntegrationsScreenProps) {
   // Load initial states from local storage so it syncs perfectly with dashboard bento card
   const [integrations, setIntegrations] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem("orders_integrations");
+      const saved = safeStorage.getItem("orders_integrations");
       return saved ? JSON.parse(saved) : { ifood: true, amo: false, "99food": false, website: true };
     } catch {
       return { ifood: true, amo: false, "99food": false, website: true };
@@ -61,7 +197,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
 
   const [orders, setOrders] = useState<Order[]>(() => {
     try {
-      const saved = localStorage.getItem("orders_list");
+      const saved = safeStorage.getItem("orders_list");
       if (saved) return JSON.parse(saved);
     } catch {}
     return [];
@@ -81,12 +217,16 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
 
   // Sync state changes to local storage on edit and dispatch sync event
   useEffect(() => {
-    localStorage.setItem("orders_integrations", JSON.stringify(integrations));
+    try {
+      safeStorage.setItem("orders_integrations", JSON.stringify(integrations));
+    } catch {}
     window.dispatchEvent(new Event("storage"));
   }, [integrations]);
 
   useEffect(() => {
-    localStorage.setItem("orders_list", JSON.stringify(orders));
+    try {
+      safeStorage.setItem("orders_list", JSON.stringify(orders));
+    } catch {}
     window.dispatchEvent(new Event("storage"));
   }, [orders]);
 
@@ -94,7 +234,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
   useEffect(() => {
     const handleSync = () => {
       try {
-        const savedInts = localStorage.getItem("orders_integrations");
+        const savedInts = safeStorage.getItem("orders_integrations");
         if (savedInts) {
           setIntegrations(current => {
             const parsed = JSON.parse(savedInts);
@@ -107,7 +247,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
       } catch {}
 
       try {
-        const savedOrders = localStorage.getItem("orders_list");
+        const savedOrders = safeStorage.getItem("orders_list");
         if (savedOrders) {
           setOrders(current => {
             const parsed = JSON.parse(savedOrders);
@@ -138,19 +278,24 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
     apiBaseUrl: string; 
     amoToken: string; 
     restaurantId: string;
+    autoAccept?: boolean;
     clientId?: string;
     clientSecret?: string;
+    customName?: string;
+    customColor?: string;
+    notificationSound?: string;
+    customIcon?: string;
   }>>(() => {
     try {
-      const saved = localStorage.getItem("orders_channel_configs");
+      const saved = safeStorage.getItem("orders_channel_configs");
       if (saved) return JSON.parse(saved);
     } catch {}
     
     return {
-      ifood: { apiBaseUrl: "https://merchant-api.ifood.com.br", amoToken: "", restaurantId: "IF-82910", clientId: "", clientSecret: "" },
-      amo: { apiBaseUrl: "https://api.uat.amo.delivery", amoToken: "", restaurantId: "", clientId: "", clientSecret: "" },
-      "99food": { apiBaseUrl: "https://api.food.99app.com/v1", amoToken: "", restaurantId: "99F-4910" },
-      website: { apiBaseUrl: "https://api.mywebstore.com/v1", amoToken: "", restaurantId: "WEB-7821" },
+      ifood: { apiBaseUrl: "https://merchant-api.ifood.com.br", amoToken: "", restaurantId: "IF-82910", clientId: "", clientSecret: "", customName: "iFood", customColor: "red", notificationSound: "chime", customIcon: "Truck", autoAccept: false },
+      amo: { apiBaseUrl: "https://api.uat.amo.delivery", amoToken: "", restaurantId: "", clientId: "", clientSecret: "", customName: "AMO", customColor: "orange", notificationSound: "ping", customIcon: "Truck", autoAccept: false },
+      "99food": { apiBaseUrl: "https://api.food.99app.com/v1", amoToken: "", restaurantId: "99F-4910", customName: "99Food", customColor: "yellow", notificationSound: "beep", customIcon: "Truck", autoAccept: false },
+      website: { apiBaseUrl: "https://api.mywebstore.com/v1", amoToken: "", restaurantId: "WEB-7821", customName: "Website", customColor: "indigo", notificationSound: "kaching", customIcon: "Globe", autoAccept: false },
     };
   });
 
@@ -162,6 +307,21 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
   const [confirmResetOrders, setConfirmResetOrders] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
+
+  const handleCopyApiData = (orderId: string, data: any) => {
+    try {
+      const text = JSON.stringify(data, null, 2);
+      navigator.clipboard.writeText(text);
+      setCopiedOrderId(orderId);
+      showToast(language === "pt" ? "Dados copiados!" : "API data copied to clipboard!");
+      setTimeout(() => {
+        setCopiedOrderId(null);
+      }, 2000);
+    } catch (err) {
+      showToast(language === "pt" ? "Erro ao copiar dados" : "Error copying data");
+    }
+  };
 
   const fetchAndShowAmoLogs = async () => {
     setIsFetchingLogs(true);
@@ -203,7 +363,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
   };
 
   useEffect(() => {
-    localStorage.setItem("orders_channel_configs", JSON.stringify(channelConfigs));
+    try {
+      safeStorage.setItem("orders_channel_configs", JSON.stringify(channelConfigs));
+    } catch {}
   }, [channelConfigs]);
 
   // =========================================================================
@@ -250,7 +412,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
         setOrders(prev => {
           const nonAmo = prev.filter(o => o.channel !== "amo");
           const merged = [...syncedAmoOrders, ...nonAmo];
-          localStorage.setItem("orders_list", JSON.stringify(merged));
+          try {
+            safeStorage.setItem("orders_list", JSON.stringify(merged));
+          } catch {}
           
           setTimeout(() => {
             window.dispatchEvent(new Event("storage"));
@@ -394,7 +558,11 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
   const getChannelOrders = (key: string) => {
     return [...orders]
       .filter(o => o.channel === key)
-      .sort((a, b) => b.time.localeCompare(a.time));
+      .sort((a, b) => {
+        const dateCompare = (b.date || "").localeCompare(a.date || "");
+        if (dateCompare !== 0) return dateCompare;
+        return (b.time || "").localeCompare(a.time || "");
+      });
   };
 
   const triggerSimulation = (key: string) => {
@@ -415,21 +583,149 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
     
     const now = new Date();
     const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+
+    const orderTypes = ["delivery", "pickup", "dine_in"] as const;
+    const randomType = orderTypes[Math.floor(Math.random() * orderTypes.length)];
+
+    const emailName = randomCust.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ".");
+    const email = `${emailName}@gmail.com`;
+    const phoneNum = `(11) 9${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const randomAddressObj = SIMULATED_ADDRESSES[Math.floor(Math.random() * SIMULATED_ADDRESSES.length)];
+    
+    // Generate a random CPF or "null" (85% CPF, 15% null)
+    const randCPF = Math.random() > 0.15 
+      ? Array.from({ length: 11 }, () => Math.floor(Math.random() * 10)).join("")
+      : "null";
+
+    const simulatedItems: any[] = [];
+    const itemsSplit = randomItem.text.split(/,\s*/);
+    for (const item of itemsSplit) {
+      const trimmed = item.trim();
+      if (!trimmed) continue;
+      const match = trimmed.match(/^(\d+)x\s+(.*?)(?:\s*\(([^)]+)\))?$/);
+      if (match) {
+        const qty = parseInt(match[1]) || 1;
+        const name = match[2].trim();
+        const obs = match[3] ? match[3].trim() : "";
+        
+        // Random options/extras to simulate real API
+        const optionsList: any[] = [];
+        if (Math.random() > 0.3) {
+          optionsList.push({ quantity: 1, name: "Molho Especial (Special Sauce)" });
+          if (Math.random() > 0.5) {
+            optionsList.push({ quantity: 2, name: "Queijo Adicional (Extra Cheese)" });
+          }
+        }
+
+        simulatedItems.push({
+          name: name,
+          quantity: qty,
+          specialInstructions: obs || undefined,
+          observation: obs || undefined,
+          options: optionsList.length > 0 ? optionsList : undefined
+        });
+      } else {
+        const optionsList: any[] = [];
+        if (Math.random() > 0.4) {
+          optionsList.push({ quantity: 1, name: "Gelo e Limão (Ice and Lemon)" });
+        }
+        simulatedItems.push({
+          name: trimmed,
+          quantity: 1,
+          options: optionsList.length > 0 ? optionsList : undefined
+        });
+      }
+    }
+
+    const otherFeesVal = randomType === "delivery" ? 5.00 : 0;
+    const itemsPriceVal = Math.max(0, randomItem.cost - otherFeesVal);
+
+    const simulatedAmoData: Record<string, any> = {
+      id: `${prefix}-${randNum}`,
+      displayId: `${prefix}-${randNum}`,
+      type: randomType === "delivery" ? "DELIVERY" : randomType === "pickup" ? "TAKEOUT" : "DINE_IN",
+      customer: {
+        name: randomCust,
+        email: email,
+        phone: {
+          number: phoneNum
+        },
+        documentNumber: randCPF
+      },
+      payments: {
+        methods: [
+          {
+            method: Math.random() > 0.5 ? "CREDIT_CARD" : "PIX",
+            type: "ONLINE"
+          }
+        ]
+      },
+      items: simulatedItems,
+      lastEvent: "CONFIRMED",
+      total: {
+        itemsPrice: {
+          value: Number(itemsPriceVal.toFixed(2)),
+          currency: "BRL"
+        },
+        otherFees: {
+          value: otherFeesVal,
+          currency: "BRL"
+        },
+        discount: {
+          value: 0,
+          currency: "BRL"
+        },
+        orderAmount: {
+          value: randomItem.cost,
+          currency: "BRL"
+        }
+      }
+    };
+
+    if (randomType === "delivery") {
+      simulatedAmoData.delivery = {
+        deliveryAddress: {
+          formattedAddress: randomAddressObj.formattedAddress,
+          coordinates: {
+            latitude: randomAddressObj.latitude,
+            longitude: randomAddressObj.longitude
+          }
+        }
+      };
+    }
+
+    if (randomType === "delivery" || randomType === "pickup") {
+      const isScheduled = Math.random() > 0.5;
+      if (isScheduled) {
+        simulatedAmoData.orderTiming = "SCHEDULED";
+        const futureDate = new Date();
+        futureDate.setMinutes(futureDate.getMinutes() + Math.floor(Math.random() * 180) + 60);
+        simulatedAmoData.scheduledDateTimeStart = futureDate.toISOString();
+      }
+    }
 
     const newOrder: Order = {
       id: `${prefix}-${randNum}`,
       channel: key,
       customerName: randomCust,
       time: timeStr,
+      date: dateStr,
       items: randomItem.text,
       total: randomItem.cost,
-      status: "pending"
+      status: "pending",
+      type: randomType,
+      amoData: simulatedAmoData
     };
 
     setOrders(prev => [newOrder, ...prev]);
     
     const targetCh = INT_CHANNELS.find(c => c.key === key);
     const channelName = targetCh ? targetCh.name : key;
+    playSynthSound(targetCh?.sound || "chime");
     showToast(
       language === "pt" 
         ? `Novo pedido #${newOrder.id} simulado para ${channelName}!` 
@@ -453,7 +749,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
 
         setOrders(prev => {
           const updated = prev.map(o => (o.id === order.id ? result.order! : o));
-          localStorage.setItem("orders_list", JSON.stringify(updated));
+          try {
+            safeStorage.setItem("orders_list", JSON.stringify(updated));
+          } catch {}
           window.dispatchEvent(new Event("storage"));
           return updated;
         });
@@ -486,7 +784,9 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
     }
     setConfirmResetOrders(false);
     setOrders([]);
-    localStorage.setItem("orders_list", JSON.stringify([]));
+    try {
+      safeStorage.setItem("orders_list", JSON.stringify([]));
+    } catch {}
     window.dispatchEvent(new Event("storage"));
     showToast(language === "pt" ? "Todos os logs de pedidos foram removidos com sucesso!" : "All order logs cleared successfully from all channels!");
   };
@@ -506,11 +806,52 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
     return { phone, email, orderType, lastEvent, paymentMethod, paymentType, takeoutTime };
   };
 
+  const getChannelIcon = (iconName: string | undefined, defaultIcon: any) => {
+    switch (iconName) {
+      case "Truck": return Truck;
+      case "Globe": return Globe;
+      case "ShoppingBag": return ShoppingBag;
+      case "Layers": return Layers;
+      case "Bell": return Bell;
+      case "Store": return Store;
+      case "Coffee": return Coffee;
+      case "Utensils": return Utensils;
+      case "ChefHat": return ChefHat;
+      default: return defaultIcon;
+    }
+  };
+
+  const getChannelDetails = (key: string, defaultName: string, defaultColorKey: string, defaultIconName: string, defaultSound: string, desc: string, devKey: string) => {
+    const config = channelConfigs[key] || {};
+    const name = config.customName || defaultName;
+    const colorKey = config.customColor || defaultColorKey;
+    const sound = config.notificationSound || defaultSound;
+    const iconName = config.customIcon || defaultIconName;
+    
+    const preset = COLOR_PRESETS[colorKey] || COLOR_PRESETS[defaultColorKey] || COLOR_PRESETS.indigo;
+    const iconComponent = getChannelIcon(iconName, defaultIconName === "Globe" ? Globe : Truck);
+    
+    return {
+      key,
+      name,
+      color: preset.bg,
+      hover: preset.hover,
+      text: preset.text,
+      border: preset.border,
+      icon: iconComponent,
+      desc,
+      devKey,
+      sound,
+      colorKey,
+      iconName,
+    };
+  };
+
   const INT_CHANNELS = [
-    { key: "amo", name: "AMO", color: "bg-[#FF5C00]", hover: "hover:bg-[#FF5C00]/10", text: "text-[#FF5C00]", border: "border-[#FF5C00]", icon: Truck, desc: "AMO Delivery Connector", devKey: "amo" },
-    { key: "ifood", name: "iFood", color: "bg-[#EA1D2C]", hover: "hover:bg-[#EA1D2C]/10", text: "text-[#EA1D2C]", border: "border-[#EA1D2C]", icon: Truck, desc: "iFood Portal Integration", devKey: "ifood" },
-    { key: "99food", name: "99Food", color: "bg-[#FFAA00]", hover: "hover:bg-[#FFAA00]/10", text: "text-[#FFAA00]", border: "border-[#FFAA00]", icon: Truck, desc: "99Food API Channel", devKey: "99food" },
-    { key: "website", name: "Website", color: "bg-[#4F46E5]", hover: "hover:bg-[#4F46E5]/10", text: "text-[#4F46E5]", border: "border-[#4F46E5]", icon: Globe, desc: "Direct Webstore Commerce", devKey: "website" },
+    getChannelDetails("amo", "AMO", "orange", "Truck", "ping", "AMO Delivery Connector", "amo"),
+    getChannelDetails("ifood", "iFood", "red", "Truck", "chime", "iFood Portal Integration", "ifood"),
+    getChannelDetails("99food", "99Food", "yellow", "Truck", "beep", "99Food API Channel", "99food"),
+    getChannelDetails("website", "Website", "indigo", "Globe", "kaching", "Direct Webstore Commerce", "website"),
   ];
 
   const currentChannel = INT_CHANNELS.find(ch => ch.key === activeChannelKey) || INT_CHANNELS[0];
@@ -529,14 +870,14 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
-            className="p-2.5 bg-white border border-slate-150 hover:bg-slate-50 text-slate-500 hover:text-slate-700 active:bg-slate-100 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
+            className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 active:bg-slate-100 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
             title={language === "pt" ? "Voltar ao Início" : "Back to Home"}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
+              <h1 className="text-xl font-black text-slate-900 tracking-tight">
                 {language === "pt" ? "Canal de Integrações API" : "Integrations & Sales Pipelines"}
               </h1>
             </div>
@@ -759,6 +1100,141 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
             </div>
           )}
 
+          {/* Channel Customization Configuration Section */}
+          <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/40 pb-3">
+              <div className="flex items-center gap-2">
+                <Palette className="w-4 h-4 text-emerald-600" />
+                <h3 className="text-xs font-extrabold text-slate-800 tracking-wider uppercase">
+                  {language === "pt" ? "Configurações de Identidade do Canal" : "Channel Identity & Customization"}
+                </h3>
+              </div>
+              <span className="text-[10px] uppercase font-mono font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md border border-emerald-100/50">
+                {currentChannel.name} Identity
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Field 1: Nome do Canal */}
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                  {language === "pt" ? "Nome do Canal" : "Channel Name"}
+                </label>
+                <input
+                  type="text"
+                  value={channelConfigs[currentChannel.key]?.customName || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setChannelConfigs(prev => ({
+                      ...prev,
+                      [currentChannel.key]: {
+                        ...(prev[currentChannel.key] || { apiBaseUrl: "", amoToken: "", restaurantId: "" }),
+                        customName: val
+                      }
+                    }));
+                  }}
+                  placeholder={currentChannel.name}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-3xs transition-all text-slate-800"
+                />
+              </div>
+
+              {/* Field 2: Cor do Canal */}
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                  {language === "pt" ? "Cor do Canal" : "Channel Color"}
+                </label>
+                <select
+                  value={channelConfigs[currentChannel.key]?.customColor || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setChannelConfigs(prev => ({
+                      ...prev,
+                      [currentChannel.key]: {
+                        ...(prev[currentChannel.key] || { apiBaseUrl: "", amoToken: "", restaurantId: "" }),
+                        customColor: val
+                      }
+                    }));
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-3xs transition-all text-slate-800 cursor-pointer"
+                >
+                  {Object.entries(COLOR_PRESETS).map(([k, p]) => (
+                    <option key={k} value={k}>
+                      {language === "pt" ? p.labelPt : p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Field 3: Som Notificação */}
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                  {language === "pt" ? "Som de Notificação" : "Notification Sound"}
+                </label>
+                <div className="flex gap-2">
+                  <select
+                    value={channelConfigs[currentChannel.key]?.notificationSound || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setChannelConfigs(prev => ({
+                        ...prev,
+                        [currentChannel.key]: {
+                          ...(prev[currentChannel.key] || { apiBaseUrl: "", amoToken: "", restaurantId: "" }),
+                          notificationSound: val
+                        }
+                      }));
+                      playSynthSound(val);
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-3xs transition-all text-slate-800 cursor-pointer"
+                  >
+                    <option value="chime">{language === "pt" ? "📣 Sirene de Cozinha (Mais Forte)" : "📣 Kitchen Siren (Loudest)"}</option>
+                    <option value="beep">{language === "pt" ? "📟 Alarme de Impressora (Penetrante)" : "📟 Printer Buzzer (Harsh)"}</option>
+                    <option value="kaching">{language === "pt" ? "🔔 Campainha de Mesa (Estridente)" : "🔔 Desk Bell (Strident Ring)"}</option>
+                    <option value="ping">{language === "pt" ? "🚨 Apito Agudo (Ultra Alto)" : "🚨 Piercing Whistle (Ultra High)"}</option>
+                    <option value="ding">{language === "pt" ? "📢 Buzina de Alerta (Forte)" : "📢 Alert Horn (Strong)"}</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => playSynthSound(channelConfigs[currentChannel.key]?.notificationSound || (currentChannel.key === "ifood" ? "chime" : currentChannel.key === "amo" ? "ping" : currentChannel.key === "99food" ? "beep" : "kaching"))}
+                    className="px-3 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-650 cursor-pointer flex items-center justify-center transition-all shadow-3xs active:scale-95"
+                    title={language === "pt" ? "Testar som" : "Test sound"}
+                  >
+                    <Volume2 className="w-4 h-4 text-emerald-600" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Field 4: Ícone do Canal */}
+              <div className="space-y-1.5">
+                <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                  {language === "pt" ? "Ícone do Canal" : "Channel Icon"}
+                </label>
+                <select
+                  value={channelConfigs[currentChannel.key]?.customIcon || ""}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setChannelConfigs(prev => ({
+                      ...prev,
+                      [currentChannel.key]: {
+                        ...(prev[currentChannel.key] || { apiBaseUrl: "", amoToken: "", restaurantId: "" }),
+                        customIcon: val
+                      }
+                    }));
+                  }}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-3xs transition-all text-slate-800 cursor-pointer"
+                >
+                  <option value="Truck">{language === "pt" ? "Caminhão de Entrega" : "Delivery Truck"}</option>
+                  <option value="Globe">{language === "pt" ? "Globo / Web" : "Globe / Web"}</option>
+                  <option value="ShoppingBag">{language === "pt" ? "Sacola de Compras" : "Shopping Bag"}</option>
+                  <option value="Bell">{language === "pt" ? "Sino de Alerta" : "Alert Bell"}</option>
+                  <option value="Store">{language === "pt" ? "Loja Física" : "Physical Store"}</option>
+                  <option value="Coffee">{language === "pt" ? "Cafeteria / Café" : "Coffee Shop"}</option>
+                  <option value="Utensils">{language === "pt" ? "Talheres" : "Utensils"}</option>
+                  <option value="ChefHat">{language === "pt" ? "Chapéu de Chef" : "Chef Hat"}</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           {/* API Configuration section */}
           <div className="bg-slate-50/80 rounded-2xl border border-slate-100 p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200/40 pb-3">
@@ -773,35 +1249,7 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
               </span>
             </div>
 
-            {currentChannel.key === "amo" && (
-              <div className="bg-[#FF5C00]/5 border border-[#FF5C00]/15 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center gap-2 text-[#FF5C00]">
-                  <FileText className="w-4 h-4" />
-                  <h4 className="text-xs font-black uppercase tracking-wide">
-                    {language === "pt" ? "Conexão Oficial AMO - Diretivas Doc 517071" : "Official AMO Connection - Doc 517071 Guidelines"}
-                  </h4>
-                </div>
-                <p className="text-[10.5px] font-medium text-slate-600 leading-relaxed">
-                  {language === "pt"
-                    ? "Esta conexão automatizada segue rigorosamente as diretrizes e endpoints do padrão Open Delivery especificados no documento oficial AMO Doc 517071:"
-                    : "This integration strictly implements standard Open Delivery API endpoints mapped within the official AMO developer documentation (Doc 517071):"}
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] font-bold font-mono pt-1">
-                  <div className="bg-white/80 p-2 rounded-xl border border-slate-100 flex flex-col">
-                    <span className="text-slate-400 text-[8.5px] uppercase font-bold">{language === "pt" ? "AUTENTICAÇÃO" : "AUTH STANDARD"}</span>
-                    <span className="text-slate-800">POST /oauth/token (grant_type)</span>
-                  </div>
-                  <div className="bg-white/80 p-2 rounded-xl border border-slate-100 flex flex-col">
-                    <span className="text-slate-400 text-[8.5px] uppercase font-bold">{language === "pt" ? "LISTAR PEDIDOS" : "LIST ORDERS"}</span>
-                    <span className="text-[#FF5C00]">GET /v1/open-delivery/orders?page=1&limit=5</span>
-                  </div>
-                  <div className="bg-white/80 p-2 rounded-xl border border-slate-100 flex flex-col">
-                    <span className="text-slate-400 text-[8.5px] uppercase font-bold">{language === "pt" ? "DADOS DO PEDIDO" : "ORDER RETRIEVAL"}</span>
-                    <span className="text-[#FF5C00]">GET /v1/open-delivery/orders/&#123;id&#125;</span>
-                  </div>
-                </div>
-              </div>
-            )}
+
 
             <div className="flex flex-col gap-4">
               {/* API Base URL Field */}
@@ -964,54 +1412,56 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
                 </div>
               )}
 
-              {/* Restaurant ID Field — optional for AMO (credentials only) */}
+              {/* Auto Accept Orders Toggle Option */}
               <div className="space-y-1.5">
                 <label className="text-[10.5px] font-bold text-slate-500 uppercase tracking-wider block">
-                  {currentChannel.key === "ifood" 
-                    ? (language === "pt" ? "Merchant ID (ID do Restaurante)" : "Merchant ID (Restaurant ID)")
-                    : currentChannel.key === "amo"
-                    ? (language === "pt" ? "ID do Restaurante (opcional)" : "Restaurant ID (optional)")
-                    : (language === "pt" ? "ID do Restaurante" : "Restaurant ID")}
+                  {language === "pt" ? "Aceitar Pedidos Automaticamente" : "Auto Accept Orders"}
                 </label>
-                {currentChannel.key === "amo" && (
-                  <p className="text-[10px] text-amber-700 font-medium">
-                    {language === "pt"
-                      ? "A integração AMO usa apenas Client ID e Client Secret. Deixe em branco."
-                      : "AMO integration only requires Client ID and Client Secret. Leave this blank."}
-                  </p>
-                )}
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
-                    <Tag className="w-4 h-4" />
-                  </span>
-                  <input
-                    type="text"
-                    value={channelConfigs[currentChannel.key]?.restaurantId || ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
+                <div className="flex items-center gap-3 bg-white border border-slate-200 p-2 rounded-xl shadow-3xs">
+                  <button
+                    type="button"
+                    onClick={() => {
                       setChannelConfigs(prev => ({
                         ...prev,
                         [currentChannel.key]: {
                           ...(prev[currentChannel.key] || { apiBaseUrl: "", amoToken: "", restaurantId: "" }),
-                          restaurantId: val
+                          autoAccept: true
                         }
                       }));
                     }}
-                    placeholder={currentChannel.key === "ifood" ? "e.g. fd28a-..." : "e.g. REST-9912"}
-                    className="w-full pl-9 pr-3 py-2 bg-white border border-slate-250 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-3xs transition-all text-slate-800"
-                  />
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                      channelConfigs[currentChannel.key]?.autoAccept
+                        ? "bg-emerald-600 text-white shadow-3xs"
+                        : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    {language === "pt" ? "Ativado" : "Active"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChannelConfigs(prev => ({
+                        ...prev,
+                        [currentChannel.key]: {
+                          ...(prev[currentChannel.key] || { apiBaseUrl: "", amoToken: "", restaurantId: "" }),
+                          autoAccept: false
+                        }
+                      }));
+                    }}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                      !channelConfigs[currentChannel.key]?.autoAccept
+                        ? "bg-rose-600 text-white shadow-3xs"
+                        : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                    }`}
+                  >
+                    {language === "pt" ? "Desativado" : "Inactive"}
+                  </button>
                 </div>
               </div>
             </div>
 
             {/* Test Connection Button */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 border-t border-slate-200/30">
-              <p className="text-[10px] text-slate-400 font-medium">
-                {language === "pt"
-                  ? "Conexões utilizam encriptação local HTTPS segura de ponta a ponta."
-                  : "Live handshake tests connect to your remote platform endpoint securely."}
-              </p>
-
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 pt-2 border-t border-slate-200/30">
               <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
                 {currentChannel.key === "amo" && (
                   <button
@@ -1196,15 +1646,29 @@ export default function IntegrationsScreen({ language, onBack, initialChannelKey
 
                       {o.amoData && (
                         <div className="border-t border-slate-100 pt-2">
-                          <button
-                            type="button"
-                            onClick={() => setExpandedOrderId(isExpanded ? null : o.id)}
-                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
-                          >
-                            {isExpanded
-                              ? (language === "pt" ? "Ocultar dados completos da API" : "Hide full API data")
-                              : (language === "pt" ? "Ver dados completos da API" : "View full API data")}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedOrderId(isExpanded ? null : o.id)}
+                              className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                            >
+                              {isExpanded
+                                ? (language === "pt" ? "Ocultar dados completos da API" : "Hide full API data")
+                                : (language === "pt" ? "Ver dados completos da API" : "View full API data")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyApiData(o.id, o.amoData)}
+                              className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-md transition-all cursor-pointer flex items-center justify-center"
+                              title={language === "pt" ? "Copiar dados da API" : "Copy API data"}
+                            >
+                              {copiedOrderId === o.id ? (
+                                <Check className="w-3 h-3 text-emerald-500 animate-pulse" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
                           {isExpanded && (
                             <pre className="mt-2 p-3 bg-slate-950 text-slate-100 rounded-xl text-[10px] leading-relaxed overflow-x-auto max-h-64 overflow-y-auto font-mono">
                               {JSON.stringify(o.amoData, null, 2)}

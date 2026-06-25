@@ -5,6 +5,7 @@ export interface Order {
   channel: string;
   customerName: string;
   time: string;
+  date?: string;
   items: string;
   total: number;
   status: OrderStatus;
@@ -12,6 +13,9 @@ export interface Order {
   amoOrderId?: string;
   /** Full raw order payload returned by AMO GET /v1/open-delivery/orders/{id} */
   amoData?: Record<string, unknown>;
+  type?: "delivery" | "pickup" | "dine_in";
+  orderTiming?: string;
+  scheduledDateTimeStart?: string;
 }
 
 export interface ReceiptItem {

@@ -12,7 +12,7 @@ import {
   Coins
 } from "lucide-react";
 import { ReceiptItem } from "../types";
-import { formatCurrency, generateId } from "../utils";
+import { formatCurrency, generateId, safeStorage } from "../utils";
 
 interface StagingReviewScreenProps {
   stagedItems: ReceiptItem[];
@@ -337,7 +337,7 @@ export default function StagingReviewScreen({
   function currencySymbol() {
     const defaultSymbol = "$";
     try {
-      const stored = localStorage.getItem("grocery_currency");
+      const stored = safeStorage.getItem("grocery_currency");
       if (stored === "BRL") return "R$";
       if (stored === "EUR") return "€";
     } catch (e) {}

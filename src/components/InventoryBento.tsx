@@ -14,7 +14,8 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Check,
-  Printer
+  Printer,
+  Tag
 } from "lucide-react";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { collection, doc, onSnapshot, setDoc, deleteDoc } from "firebase/firestore";
@@ -25,6 +26,7 @@ interface InventoryBentoProps {
   items: ReceiptItem[];
   categories: string[];
   language?: "en" | "pt";
+  onManageCategories?: () => void;
 }
 
 interface SavedReportItem {
@@ -41,7 +43,7 @@ interface SavedInventoryReport {
   title?: string;
 }
 
-export default function InventoryBento({ items, categories, language = "en" }: InventoryBentoProps) {
+export default function InventoryBento({ items, categories, language = "en", onManageCategories }: InventoryBentoProps) {
   // Real-time Firestore loaded states
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [savedReports, setSavedReports] = useState<SavedInventoryReport[]>([]);
@@ -473,9 +475,23 @@ export default function InventoryBento({ items, categories, language = "en" }: I
       </div>
 
       {/* Action triggers grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         
-        {/* Button 1: Settings to Define Categories */}
+        {/* Button 1: Manage Categories (Smarter Navigation) */}
+        <button
+          onClick={onManageCategories}
+          className="bg-slate-50 hover:bg-amber-50/70 text-slate-800 hover:text-amber-700 font-bold text-xs py-3 px-4 rounded-xl border border-slate-200/50 hover:border-amber-250 transition-all cursor-pointer flex items-center justify-between group/btn"
+        >
+          <span className="flex items-center gap-2">
+            <Tag className="w-4 h-4 text-slate-400 group-hover/btn:text-amber-500 shrink-0" />
+            <span>{language === "pt" ? "Gerenciar Categorias" : "Manage Categories"}</span>
+          </span>
+          <span className="text-[10px] text-amber-600 opacity-40 group-hover/btn:opacity-100">
+            →
+          </span>
+        </button>
+
+        {/* Button 2: Settings to Define Categories */}
         <button
           onClick={() => {
             setSaveStatus("idle");
@@ -492,7 +508,7 @@ export default function InventoryBento({ items, categories, language = "en" }: I
           </span>
         </button>
 
-        {/* Button 2: Generate Stock Count Report */}
+        {/* Button 3: Generate Stock Count Report */}
         <button
           onClick={handleOpenGenerate}
           className="bg-slate-50 hover:bg-amber-50/70 text-slate-800 hover:text-amber-700 font-bold text-xs py-3 px-4 rounded-xl border border-slate-200/50 hover:border-amber-250 transition-all cursor-pointer flex items-center justify-between group/btn"
@@ -506,7 +522,7 @@ export default function InventoryBento({ items, categories, language = "en" }: I
           </span>
         </button>
 
-        {/* Button 3: Display Saved Reports */}
+        {/* Button 4: Display Saved Reports */}
         <button
           onClick={() => {
             setActiveModal("history");

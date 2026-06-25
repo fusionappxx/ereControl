@@ -484,23 +484,26 @@ export default function SpendingBreakdown({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header section without standard switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-4">
           <button
             onClick={onBack}
-            className="group mb-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1 cursor-pointer transition-colors"
+            className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 active:bg-slate-100 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
+            title={language === "pt" ? "Voltar ao Início" : "Back to Home"}
           >
-            <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" /> 
-            {language === "pt" ? "Voltar" : "Back to previous screen"}
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <h1 className="text-xl font-bold text-slate-950 tracking-tight flex items-center gap-2">
-            <Layers className="w-5 h-5 text-emerald-600" /> {language === "pt" ? "Análise de Despesas por Grupo" : "Spending Breakdown"}
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {language === "pt"
-              ? "Despesas organizadas em quatro grupos principais: Insumos (Supplies), Limpeza (Cleaning), Fixas (Fixed) e Variáveis (Variable)"
-              : "Expenses split into four major operational pillars: Supplies, Cleaning, Fixed, and Variable"}
-          </p>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <Layers className="w-5 h-5 text-emerald-600" />
+              <span>{language === "pt" ? "Análise de Despesas por Grupo" : "Spending Breakdown"}</span>
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              {language === "pt"
+                ? "Despesas organizadas em quatro grupos principais: Insumos (Supplies), Limpeza (Cleaning), Fixas (Fixed) e Variáveis (Variable)"
+                : "Expenses split into four major operational pillars: Supplies, Cleaning, Fixed, and Variable"}
+            </p>
+          </div>
         </div>
       </div>
 

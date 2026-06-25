@@ -483,6 +483,42 @@ export const DEMO_RECEIPT_ITEMS: ReceiptItem[] = [
   }
 ];
 
+// Memory storage fallback in case localStorage is blocked/disabled/throws in sandboxed iframe
+const memoryStorage: Record<string, string> = {};
+
+export const safeStorage = {
+  getItem(key: string): string | null {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (e) {
+      return memoryStorage[key] || null;
+    }
+  },
+  setItem(key: string, value: string): void {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (e) {
+      memoryStorage[key] = value;
+    }
+  },
+  removeItem(key: string): void {
+    try {
+      window.localStorage.removeItem(key);
+    } catch (e) {
+      delete memoryStorage[key];
+    }
+  },
+  clear(): void {
+    try {
+      window.localStorage.clear();
+    } catch (e) {
+      for (const key in memoryStorage) {
+        delete memoryStorage[key];
+      }
+    }
+  }
+};
+
 // LocalStorage helpers for tracking upload and OCR errors
 export function saveOcrErrorLog(fileName: string, errorMsg: string): OcrErrorLog {
   const newLog: OcrErrorLog = {
@@ -492,10 +528,10 @@ export function saveOcrErrorLog(fileName: string, errorMsg: string): OcrErrorLog
     error: errorMsg || "Unknown error occurred"
   };
   try {
-    const existing = localStorage.getItem("ocr_error_logs");
+    const existing = safeStorage.getItem("ocr_error_logs");
     const logs = existing ? JSON.parse(existing) : [];
     logs.push(newLog);
-    localStorage.setItem("ocr_error_logs", JSON.stringify(logs));
+    safeStorage.setItem("ocr_error_logs", JSON.stringify(logs));
   } catch (e) {
     console.error("Failed to write to local storage OCR logs:", e);
   }
@@ -504,7 +540,7 @@ export function saveOcrErrorLog(fileName: string, errorMsg: string): OcrErrorLog
 
 export function getOcrErrorLogs(): OcrErrorLog[] {
   try {
-    const existing = localStorage.getItem("ocr_error_logs");
+    const existing = safeStorage.getItem("ocr_error_logs");
     return existing ? JSON.parse(existing) : [];
   } catch (e) {
     console.error("Failed to parse ocr error logs:", e);
@@ -514,7 +550,7 @@ export function getOcrErrorLogs(): OcrErrorLog[] {
 
 export function clearOcrErrorLogs(): void {
   try {
-    localStorage.removeItem("ocr_error_logs");
+    safeStorage.removeItem("ocr_error_logs");
   } catch (e) {
     console.error("Failed to clear ocr error logs:", e);
   }

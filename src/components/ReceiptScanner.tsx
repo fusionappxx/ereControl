@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo, forwardRef, useImperativeHandle } from "react";
 import { 
   Camera, 
   Image as ImageIcon, 
@@ -30,7 +30,12 @@ interface ReceiptScannerProps {
   language?: "en" | "pt";
 }
 
-export default function ReceiptScanner({ onScanSuccess, existingInvoices, onBatchComplete, language }: ReceiptScannerProps) {
+export interface ReceiptScannerRef {
+  triggerChooseFile: () => void;
+  triggerTakePhoto: () => void;
+}
+
+const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onScanSuccess, existingInvoices, onBatchComplete, language }, ref) => {
   const [error, setError] = useState<string | null>(null);
 
   // Queue of images to be processed
@@ -334,6 +339,11 @@ export default function ReceiptScanner({ onScanSuccess, existingInvoices, onBatc
   };
 
   // Derived metrics are placed at top level for proper lexical scoping
+
+  useImperativeHandle(ref, () => ({
+    triggerChooseFile: onUploadClick,
+    triggerTakePhoto: onCameraClick
+  }));
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
@@ -749,4 +759,6 @@ export default function ReceiptScanner({ onScanSuccess, existingInvoices, onBatc
       </div>
     </div>
   );
-}
+});
+
+export default ReceiptScanner;

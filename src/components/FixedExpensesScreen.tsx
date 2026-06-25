@@ -136,13 +136,13 @@ export default function FixedExpensesScreen({ language = "en", onBack, hideHeade
   return (
     <div className="space-y-6">
       {/* Header Block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-4">
           {!hideHeader && (
             <button
               onClick={onBack}
-              className="p-2.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center"
-              title="Go back"
+              className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 active:bg-slate-100 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
+              title={language === "pt" ? "Voltar ao Início" : "Back to Home"}
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -155,11 +155,11 @@ export default function FixedExpensesScreen({ language = "en", onBack, hideHeade
               </h3>
             ) : (
               <>
-                <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+                <h1 className="text-xl font-black tracking-tight text-slate-900 flex items-center gap-2">
                   <Coins className="w-5.5 h-5.5 text-amber-550" />
-                  {language === "pt" ? "Demonstrativo de Despesas Fixas" : "Fixed Expenses Sheet"}
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
+                  <span>{language === "pt" ? "Demonstrativo de Despesas Fixas" : "Fixed Expenses Sheet"}</span>
+                </h1>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
                   {language === "pt"
                     ? "Registre custos recorrentes mensais de sua operação para distribuição inteligente"
                     : "Register recurring monthly operational expenses for seamless kitchen cost amortization"}

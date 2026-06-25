@@ -42,7 +42,8 @@ import {
   getGlobalCurrency,
   getProductPhoto, 
   getStableBarcode, 
-  parseVolumeOrWeight 
+  parseVolumeOrWeight,
+  safeStorage
 } from "../utils";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
@@ -152,7 +153,7 @@ export default function ProductDetailsScreen({
 
     // Migrate the custom photo if renaming
     try {
-      const saved = localStorage.getItem("grocery_custom_photos");
+      const saved = safeStorage.getItem("grocery_custom_photos");
       const photos = saved ? JSON.parse(saved) : {};
       const oldKey = productName.trim().toLowerCase();
       const newKey = cleanNew.trim().toLowerCase();
@@ -161,7 +162,7 @@ export default function ProductDetailsScreen({
           photos[newKey] = photos[oldKey];
         }
         delete photos[oldKey];
-        localStorage.setItem("grocery_custom_photos", JSON.stringify(photos));
+        safeStorage.setItem("grocery_custom_photos", JSON.stringify(photos));
         setCustomPhotos(photos);
       }
     } catch (err) {
@@ -177,7 +178,7 @@ export default function ProductDetailsScreen({
 
     // Merge photo logic: keep the product photo if the other item doesn't have a custom photo
     try {
-      const saved = localStorage.getItem("grocery_custom_photos");
+      const saved = safeStorage.getItem("grocery_custom_photos");
       const photos = saved ? JSON.parse(saved) : {};
       const oldKey = productName.trim().toLowerCase();
       const newKey = target.trim().toLowerCase();
@@ -189,7 +190,7 @@ export default function ProductDetailsScreen({
         }
         // Delete old key since the items have been merged into the target and oldKey is merged/removed.
         delete photos[oldKey];
-        localStorage.setItem("grocery_custom_photos", JSON.stringify(photos));
+        safeStorage.setItem("grocery_custom_photos", JSON.stringify(photos));
         setCustomPhotos(photos);
       }
     } catch (err) {
@@ -202,7 +203,7 @@ export default function ProductDetailsScreen({
   // Custom photos persisted in localStorage
   const [customPhotos, setCustomPhotos] = useState<Record<string, string>>(() => {
     try {
-      const saved = localStorage.getItem("grocery_custom_photos");
+      const saved = safeStorage.getItem("grocery_custom_photos");
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -218,7 +219,11 @@ export default function ProductDetailsScreen({
       const base64String = reader.result as string;
       const updated = { ...customPhotos, [productName.trim().toLowerCase()]: base64String };
       setCustomPhotos(updated);
-      localStorage.setItem("grocery_custom_photos", JSON.stringify(updated));
+      try {
+        safeStorage.setItem("grocery_custom_photos", JSON.stringify(updated));
+      } catch (err) {
+        console.error("Failed to persist custom photo to localStorage:", err);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -624,18 +629,29 @@ export default function ProductDetailsScreen({
   return (
     <div className="max-w-5xl mx-auto space-y-6 select-text">
       {/* Dynamic Header */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-3xs"
-        >
-          <ArrowLeft className="w-4 h-4 text-emerald-500" />
-          Back to Database
-        </button>
-
-        <span className="text-xs text-slate-400 font-medium bg-slate-100 border border-slate-200/50 px-3 py-1 rounded-full font-mono">
-          Product Details Profile
-        </span>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="p-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 active:bg-slate-100 rounded-xl transition-all shadow-3xs cursor-pointer flex items-center justify-center"
+            title={language === "pt" ? "Voltar ao Início" : "Back to Home"}
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+              <span>{language === "pt" ? "Perfil do Produto" : "Product Details Profile"}</span>
+              <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full font-bold">
+                {productName}
+              </span>
+            </h1>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              {language === "pt" 
+                ? "Visualização e parametrização avançada de peso, rendimento e ficha técnica do item selecionado."
+                : "View and manage advanced metrics, spec weights, and costing details of the selected item."}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Centered Top Photo Section */}

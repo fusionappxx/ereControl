@@ -1,4 +1,5 @@
 import type { Order, OrderStatus } from "./types";
+import { safeStorage } from "./utils";
 
 export interface AmoChannelConfig {
   apiBaseUrl: string;
@@ -8,7 +9,7 @@ export interface AmoChannelConfig {
 
 export function getAmoChannelConfig(): AmoChannelConfig | null {
   try {
-    const saved = localStorage.getItem("orders_channel_configs");
+    const saved = safeStorage.getItem("orders_channel_configs");
     if (!saved) return null;
     const parsed = JSON.parse(saved);
     const amo = parsed?.amo;
