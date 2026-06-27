@@ -17,7 +17,9 @@ import {
   AlertCircle,
   Pencil,
   Download,
-  Upload
+  Upload,
+  Camera,
+  X
 } from "lucide-react";
 import { ReceiptItem } from "../types";
 import { formatCurrency, getGlobalCurrency, parseVolumeOrWeight, safeStorage } from "../utils";
@@ -57,6 +59,26 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
   const [recipePortions, setRecipePortions] = useState<number>(1);
   const [recipeMarkup, setRecipeMarkup] = useState<number>(2.0);
   const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
+  const [recipePhotoUrl, setRecipePhotoUrl] = useState<string>("");
+  const [recipeCategory, setRecipeCategory] = useState<string>("");
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64String = reader.result as string;
+      setRecipePhotoUrl(base64String);
+      saveRecipeToFirestore({ photoUrl: base64String });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemovePhoto = () => {
+    setRecipePhotoUrl("");
+    saveRecipeToFirestore({ photoUrl: "" });
+  };
 
   // Global pull values (from our newly separated Fixed Expenses & Production Costs pages!)
   const [fixedExpenses, setFixedExpenses] = useState<{ value: number; month: string }[]>([]);
@@ -211,12 +233,16 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
           if (Array.isArray(data.ingredients)) setRecipeIngredients(data.ingredients);
           if (data.portions !== undefined) setRecipePortions(Number(data.portions) || 1);
           if (data.markup !== undefined) setRecipeMarkup(Number(data.markup) || 2.0);
+          setRecipePhotoUrl(data.photoUrl || "");
+          setRecipeCategory(data.category || "");
         }
       } else {
         // Clear to default values
         setRecipeIngredients([]);
         setRecipePortions(1);
         setRecipeMarkup(2.0);
+        setRecipePhotoUrl("");
+        setRecipeCategory("");
       }
     }, (error) => {
       console.error("Error getting recipe:", error);
@@ -304,6 +330,8 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
     ingredients?: Ingredient[];
     portions?: number;
     markup?: number;
+    photoUrl?: string;
+    category?: string;
   }) => {
     if (!selectedProduct) return;
     const docKey = selectedProduct.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
@@ -313,6 +341,8 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
       ingredients: updated.ingredients !== undefined ? updated.ingredients : recipeIngredients,
       portions: updated.portions !== undefined ? updated.portions : recipePortions,
       markup: updated.markup !== undefined ? updated.markup : recipeMarkup,
+      photoUrl: updated.photoUrl !== undefined ? updated.photoUrl : recipePhotoUrl,
+      category: updated.category !== undefined ? updated.category : recipeCategory,
       updatedAt: new Date().toISOString()
     };
     try {
@@ -1009,12 +1039,12 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
           ) : (
             <div className="space-y-6 animate-fade-in">
               {/* Product Info Block */}
-              <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="space-y-0.5">
+              <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="space-y-0.5 text-center md:text-left">
                   <span className="text-[9px] uppercase tracking-wider font-extrabold text-amber-600">
                     {language === "pt" ? "Ficha de Custeio Ativa" : "Active Recipe Analysis"}
                   </span>
-                  <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight flex items-center justify-center md:justify-start gap-1.5">
                     <span>{selectedProduct}</span>
                     <button
                       type="button"
@@ -1025,8 +1055,70 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                   </h3>
+                  <div className="mt-1 flex items-center justify-center md:justify-start gap-1.5">
+                    <input
+                      id="recipe-category-input"
+                      type="text"
+                      value={recipeCategory}
+                      onChange={(e) => {
+                        setRecipeCategory(e.target.value);
+                        saveRecipeToFirestore({ category: e.target.value });
+                      }}
+                      placeholder={language === "pt" ? "Adicionar Categoria" : "Add Category"}
+                      className="text-[11px] text-slate-400 dark:text-slate-500 bg-transparent hover:bg-slate-50 dark:hover:bg-slate-800/40 px-2 py-0.5 rounded-md border-0 focus:ring-1 focus:ring-amber-200/50 outline-hidden w-40 text-center md:text-left transition-all"
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 bg-emerald-50/50 px-2.5 py-1.5 rounded-lg border border-emerald-100">
+
+                {/* Centered Product Photo Uploader/Display */}
+                <div className="flex flex-col items-center justify-center shrink-0">
+                  <input
+                    type="file"
+                    id="recipe-photo-input"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePhotoUpload}
+                  />
+                  {recipePhotoUrl ? (
+                    <div className="relative group/photo">
+                      <img
+                        src={recipePhotoUrl}
+                        alt={selectedProduct}
+                        referrerPolicy="no-referrer"
+                        className="w-16 h-16 rounded-xl object-cover border border-amber-100 shadow-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="absolute -top-1.5 -right-1.5 p-1 bg-rose-500 hover:bg-rose-600 text-white rounded-full shadow-xs cursor-pointer transition-all opacity-0 group-hover/photo:opacity-100"
+                        title={language === "pt" ? "Remover foto" : "Remove photo"}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => document.getElementById("recipe-photo-input")?.click()}
+                        className="absolute inset-0 bg-black/40 hover:bg-black/50 text-white flex items-center justify-center rounded-xl opacity-0 hover:opacity-100 transition-opacity cursor-pointer text-[9px] font-bold"
+                      >
+                        {language === "pt" ? "Alterar" : "Change"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById("recipe-photo-input")?.click()}
+                      className="w-16 h-16 rounded-xl border border-dashed border-slate-200 hover:border-amber-400 bg-slate-50/50 hover:bg-amber-50/20 text-slate-400 hover:text-amber-600 flex flex-col items-center justify-center gap-1 transition-all cursor-pointer group"
+                      title={language === "pt" ? "Adicionar foto do produto" : "Add product photo"}
+                    >
+                      <Camera className="w-5 h-5 group-hover:scale-105 transition-transform" />
+                      <span className="text-[8px] font-bold uppercase tracking-wider">
+                        {language === "pt" ? "+ Foto" : "+ Photo"}
+                      </span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-600 bg-emerald-50/50 px-2.5 py-1.5 rounded-lg border border-emerald-100 shrink-0">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>{language === "pt" ? "Guardado em Nuvem" : "Cloud Active Sync"}</span>
                 </div>

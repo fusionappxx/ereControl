@@ -336,11 +336,47 @@ function mapAmoOrderDocToAppOrder(orderData: any): AmoMappedOrder {
     itemsStr = `Order #${displayId}`;
   }
 
-  const orderDate = orderData.createdAt ? new Date(orderData.createdAt) : new Date();
-  const year = orderDate.getFullYear();
-  const month = String(orderDate.getMonth() + 1).padStart(2, '0');
-  const day = String(orderDate.getDate()).padStart(2, '0');
-  const dateStr = `${year}-${month}-${day}`;
+  const orderDate = (() => {
+    if (orderData.createdAt) {
+      const d = new Date(orderData.createdAt);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  })();
+
+  let dateStr = "";
+  let timeStr = "";
+
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+    const parts = formatter.formatToParts(orderDate);
+    const yearPart = parts.find(p => p.type === "year")?.value || "2026";
+    const monthPart = parts.find(p => p.type === "month")?.value || "01";
+    const dayPart = parts.find(p => p.type === "day")?.value || "01";
+    const hourPart = parts.find(p => p.type === "hour")?.value || "00";
+    const minutePart = parts.find(p => p.type === "minute")?.value || "00";
+
+    dateStr = `${yearPart}-${monthPart}-${dayPart}`;
+    timeStr = `${hourPart}:${minutePart}`;
+  } catch (err) {
+    const year = orderDate.getFullYear();
+    const month = String(orderDate.getMonth() + 1).padStart(2, '0');
+    const day = String(orderDate.getDate()).padStart(2, '0');
+    dateStr = `${year}-${month}-${day}`;
+    timeStr = orderDate.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+  }
 
   let mappedType: "delivery" | "pickup" | "dine_in" = "delivery";
   const rawType = (orderData.type || "").toUpperCase();
@@ -351,31 +387,38 @@ function mapAmoOrderDocToAppOrder(orderData: any): AmoMappedOrder {
   }
 
   // Robust scheduled order detection (support top-level and nested structures)
+  const getRawScheduledVal = () => {
+    const vals = [
+      orderData.scheduledDateTimeStart,
+      orderData.scheduled_date_time_start,
+      orderData.scheduling?.scheduledDateTimeStart,
+      orderData.scheduling?.scheduled_date_time_start
+    ];
+    for (const val of vals) {
+      if (val !== undefined && val !== null) {
+        const s = String(val).trim();
+        if (s !== "" && s !== "null" && s !== "0") {
+          return s;
+        }
+      }
+    }
+    return null;
+  };
+
+  const scheduledDateTimeStartVal = getRawScheduledVal();
+
   const orderTimingVal = 
     orderData.orderTiming || 
     orderData.order_timing || 
     orderData.scheduling?.orderTiming || 
     orderData.scheduling?.order_timing || 
-    (orderData.scheduledDateTimeStart || orderData.scheduled_date_time_start || orderData.delivery?.deliveryDateTime ? "SCHEDULED" : "IMMEDIATE");
-
-  const scheduledDateTimeStartVal = 
-    orderData.scheduledDateTimeStart || 
-    orderData.scheduled_date_time_start || 
-    orderData.scheduling?.scheduledDateTimeStart || 
-    orderData.scheduling?.scheduled_date_time_start || 
-    orderData.delivery?.deliveryDateTime || 
-    orderData.delivery?.delivery_date_time || 
-    orderData.deliveryDateTime || 
-    orderData.delivery_date_time;
+    (scheduledDateTimeStartVal ? "SCHEDULED" : "IMMEDIATE");
 
   return {
     id: `AM-${displayId}`,
     channel: "amo",
     customerName,
-    time: orderDate.toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit"
-    }),
+    time: timeStr,
     date: dateStr,
     items: itemsStr,
     total: totalAmount,

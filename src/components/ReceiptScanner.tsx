@@ -91,7 +91,7 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
     setError(null);
     const validFiles = files.filter(f => f.type.startsWith("image/"));
     if (validFiles.length === 0) {
-      setError("Please select valid image files (PNG, JPG, JPEG, WEBP).");
+      setError(language === 'pt' ? "Por favor, selecione arquivos de imagem válidos (PNG, JPG, JPEG, WEBP)." : "Please select valid image files (PNG, JPG, JPEG, WEBP).");
       return;
     }
 
@@ -101,7 +101,7 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
       file,
       previewUrl: URL.createObjectURL(file),
       status: 'queued',
-      stepMsg: 'Waiting in queue...',
+      stepMsg: language === 'pt' ? 'Aguardando na fila...' : 'Waiting in queue...',
     }));
 
     setQueue(prev => [...prev, ...newItems]);
@@ -124,13 +124,13 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
   // Execute queue item process
   const processQueueItem = async (item: QueueItem) => {
     // Mark item as scanning
-    setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'scanning', stepMsg: 'Preparing image payload...' } : q));
+    setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'scanning', stepMsg: language === 'pt' ? 'Preparando imagem...' : 'Preparing image payload...' } : q));
 
     // Convert File to Base64 & attempt automatic parsing
     const fileReaderPromise = new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error("Failed to read the file. Please try again."));
+      reader.onerror = () => reject(new Error(language === 'pt' ? "Falha ao ler o arquivo. Tente novamente." : "Failed to read the file. Please try again."));
       reader.readAsDataURL(item.file);
     });
 
@@ -139,7 +139,7 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
       await runReceiptScanForQueue(item.id, base64String, item.file.type, item.name);
     } catch (err: any) {
       console.error(err);
-      const errorMsg = err.message || "Failed to process receipt image.";
+      const errorMsg = err.message || (language === 'pt' ? "Falha ao processar imagem do recibo." : "Failed to process receipt image.");
       setQueue(prev => prev.map(q => q.id === item.id ? { ...q, status: 'failed', errorMsg } : q));
       saveOcrErrorLog(item.name, errorMsg);
     }
@@ -152,23 +152,23 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
     // Setup initial scanning messaging
     setQueue(prev => prev.map(q => q.id === itemId ? { 
       ...q, 
-      stepMsg: "Sending receipt to receipt scan analyzer..." 
+      stepMsg: language === 'pt' ? "Enviando recibo para análise..." : "Sending receipt to receipt scan analyzer..." 
     } : q));
 
     const stepInterval = setInterval(() => {
       setQueue(prev => prev.map(q => {
         if (q.id !== itemId) return q;
         let nextStep = q.stepMsg;
-        if (nextStep.includes("Sending")) {
-          nextStep = "Searching for and registering the Invoice Number...";
-        } else if (nextStep.includes("Searching")) {
-          nextStep = "Gemini AI is performing smart OCR scanning...";
-        } else if (nextStep.includes("Gemini")) {
-          nextStep = "Extracting purchased items, quantities, and prices...";
-        } else if (nextStep.includes("Extracting")) {
-          nextStep = "Classifying grocery items into categories...";
+        if (nextStep.includes("Sending") || nextStep.includes("Enviando")) {
+          nextStep = language === 'pt' ? "Buscando e registrando o Número da Nota..." : "Searching for and registering the Invoice Number...";
+        } else if (nextStep.includes("Searching") || nextStep.includes("Buscando")) {
+          nextStep = language === 'pt' ? "IA Gemini realizando escaneamento OCR inteligente..." : "Gemini AI is performing smart OCR scanning...";
+        } else if (nextStep.includes("Gemini") || nextStep.includes("IA Gemini")) {
+          nextStep = language === 'pt' ? "Extraindo itens comprados, quantidades e preços..." : "Extracting purchased items, quantities, and prices...";
+        } else if (nextStep.includes("Extracting") || nextStep.includes("Extraindo")) {
+          nextStep = language === 'pt' ? "Classificando itens de mercado em categorias..." : "Classifying grocery items into categories...";
         } else {
-          nextStep = "Assembling spreadsheet database rows...";
+          nextStep = language === 'pt' ? "Montando linhas da planilha..." : "Assembling spreadsheet database rows...";
         }
         return { ...q, stepMsg: nextStep };
       }));
@@ -352,16 +352,20 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
       <div className="border-b border-slate-100 pb-4 mb-5">
         <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-1.5">
           <Camera className="w-5 h-5 text-emerald-500" />
-          Receipt Scan Center
+          {language === 'pt' ? 'Central de Digitalização de Recibos' : 'Receipt Scan Center'}
         </h2>
-        <p className="text-xs text-slate-500 mt-0.5">Capture via webcam or upload multiple receipts to populate the grocery database automatically!</p>
+        <p className="text-xs text-slate-500 mt-0.5">
+          {language === 'pt' 
+            ? 'Capture via webcam ou envie múltiplos recibos para preencher o banco de dados de compras automaticamente!' 
+            : 'Capture via webcam or upload multiple receipts to populate the grocery database automatically!'}
+        </p>
       </div>
 
       {error && (
         <div className="mb-4 bg-rose-50 border border-rose-200 rounded-lg p-3 text-rose-700 text-xs flex items-start gap-2.5">
           <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="font-semibold">Scanner System Message</p>
+            <p className="font-semibold">{language === 'pt' ? 'Mensagem do Sistema do Scanner' : 'Scanner System Message'}</p>
             <p className="mt-0.5 text-rose-600 leading-normal">{error}</p>
           </div>
         </div>
@@ -478,26 +482,28 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
           />
           <UploadCloud className="w-10 h-10 mx-auto mb-3 text-slate-400" />
           <p className="font-semibold text-slate-800 text-sm">
-            Drag and drop receipt images (Select multiple at once!)
+            {language === 'pt' ? 'Arraste e solte imagens de recibos (Selecione vários de uma vez!)' : 'Drag and drop receipt images (Select multiple at once!)'}
           </p>
-          <p className="text-xs text-slate-400 mt-1">PNG, JPG, JPEG or WEBP formats supported</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {language === 'pt' ? 'Formatos PNG, JPG, JPEG ou WEBP suportados' : 'PNG, JPG, JPEG or WEBP formats supported'}
+          </p>
           
           <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
             <button
               type="button"
               onClick={onUploadClick}
               className="bg-slate-900 border border-slate-900 text-white hover:bg-slate-800 hover:border-slate-800 text-xs font-bold px-4 py-2.5 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Choose photos directly from your phone's photo library or gallery"
+              title={language === 'pt' ? 'Escolher fotos diretamente da sua galeria de fotos ou biblioteca' : "Choose photos directly from your phone's photo library or gallery"}
             >
-              <ImageIcon className="w-3.5 h-3.5 text-sky-450" /> Choose from Gallery
+              <ImageIcon className="w-3.5 h-3.5 text-sky-450" /> {language === 'pt' ? 'Escolher da Galeria' : 'Choose from Gallery'}
             </button>
             <button
               type="button"
               onClick={onCameraClick}
               className="bg-emerald-600 border border-emerald-600 text-white hover:bg-emerald-700 hover:border-emerald-700 text-xs font-bold px-4 py-2.5 rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Take a direct photo using your device's native high-resolution camera"
+              title={language === 'pt' ? 'Tirar uma foto direta usando a câmera nativa de alta resolução do seu dispositivo' : "Take a direct photo using your device's native high-resolution camera"}
             >
-              <Camera className="w-3.5 h-3.5" /> Take Phone Photo
+              <Camera className="w-3.5 h-3.5" /> {language === 'pt' ? 'Tirar Foto com Celular' : 'Take Phone Photo'}
             </button>
           </div>
         </div>
@@ -510,14 +516,16 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 select-none">
             <div>
               <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                Receipt Batch Processing ({completedCount} of {totalCount} completed)
+                {language === 'pt' 
+                  ? `Processamento em Lote de Recibos (${completedCount} de ${totalCount} concluídos)` 
+                  : `Receipt Batch Processing (${completedCount} of ${totalCount} completed)`}
               </h4>
               <p className="text-xs text-slate-400 mt-0.5">
                 {scanningCount > 0 
-                  ? "Scanning documents sequentially to ensure high precision data classification..." 
+                  ? (language === 'pt' ? "Digitalizando recibos sequencialmente para garantir alta precisão de dados..." : "Scanning documents sequentially to ensure high precision data classification...") 
                   : isFinished 
-                  ? "🎉 Batch complete! All successfully processed receipts are added to your database."
-                  : "Batch processing active..."}
+                  ? (language === 'pt' ? "🎉 Lote concluído! Todos os recibos processados com sucesso foram adicionados ao banco de dados." : "🎉 Batch complete! All successfully processed receipts are added to your database.")
+                  : (language === 'pt' ? "Processamento em lote ativo..." : "Batch processing active...")}
               </p>
             </div>
             
@@ -526,26 +534,26 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
                 type="button"
                 onClick={onUploadClick}
                 className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xs cursor-pointer transition-colors flex items-center gap-1.5"
-                title="Choose more photos from your phone gallery to process"
+                title={language === 'pt' ? "Escolher mais fotos da galeria do seu celular para processar" : "Choose more photos from your phone gallery to process"}
               >
                 <ImageIcon className="w-3.5 h-3.5 text-sky-500" />
-                Add from Gallery
+                {language === 'pt' ? 'Adicionar da Galeria' : 'Add from Gallery'}
               </button>
               <button
                 type="button"
                 onClick={onCameraClick}
-                className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-xs cursor-pointer transition-colors flex items-center gap-1.5"
-                title="Capture a live photo using your phone camera to process"
+                className="bg-white border border-slate-200 hover:bg-slate-55 hover:text-rose-600 text-slate-500 text-xs font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition-colors shadow-2xs flex items-center gap-1.5"
+                title={language === 'pt' ? "Tirar uma foto em tempo real usando a câmera para processar" : "Capture a live photo using your phone camera to process"}
               >
                 <Camera className="w-3.5 h-3.5 text-emerald-500" />
-                Add Camera Photo
+                {language === 'pt' ? 'Tirar Foto' : 'Add Camera Photo'}
               </button>
               <button
                 type="button"
                 onClick={resetScanner}
                 className="bg-white border border-slate-200 hover:bg-slate-55 hover:text-rose-600 text-slate-500 text-xs font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition-colors shadow-2xs"
               >
-                Clear Queue
+                {language === 'pt' ? 'Limpar Fila' : 'Clear Queue'}
               </button>
             </div>
           </div>
@@ -561,31 +569,31 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
           {/* Metrics summary */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white dark:bg-slate-900/90 border border-slate-100 dark:border-slate-800/80 p-3.5 rounded-xl mb-4 text-xs font-medium text-slate-500 dark:text-slate-400 select-none">
             <div className="text-center sm:border-r border-slate-100 dark:border-slate-800">
-              <p className="text-[10px] text-slate-400 uppercase tracking-tight">Queued</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-tight">{language === 'pt' ? 'Na Fila' : 'Queued'}</p>
               <p className="text-base font-extrabold text-slate-600 dark:text-slate-300 font-mono mt-0.5">
                 {queue.filter(q => q.status === 'queued').length}
               </p>
             </div>
             <div className="text-center sm:border-r border-slate-100 dark:border-slate-800">
-              <p className="text-[10px] text-slate-400 uppercase tracking-tight">Analyzing</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-tight">{language === 'pt' ? 'Analisando' : 'Analyzing'}</p>
               <p className="text-base font-extrabold text-indigo-500 font-mono mt-0.5">
                 {scanningCount}
               </p>
             </div>
             <div className="text-center sm:border-r border-slate-100 dark:border-slate-800">
-              <p className="text-[10px] text-slate-400 uppercase tracking-tight">Success</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-tight">{language === 'pt' ? 'Sucesso' : 'Success'}</p>
               <p className="text-base font-extrabold text-emerald-500 font-mono mt-0.5">
                 {completedCount}
               </p>
             </div>
             <div className="text-center sm:border-r border-slate-100 dark:border-slate-800">
-              <p className="text-[10px] text-slate-400 uppercase tracking-tight">Duplicate</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-tight">{language === 'pt' ? 'Duplicados' : 'Duplicate'}</p>
               <p className={`text-base font-extrabold font-mono mt-0.5 ${duplicateCount > 0 ? "text-amber-550" : "text-slate-450"}`}>
                 {duplicateCount}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-[10px] text-slate-400 uppercase tracking-tight">Failed</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-tight">{language === 'pt' ? 'Falhas' : 'Failed'}</p>
               <p className={`text-base font-extrabold font-mono mt-0.5 ${failedCount > 0 ? "text-rose-500" : "text-slate-400"}`}>
                 {failedCount}
               </p>
@@ -658,9 +666,9 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
                         : 'text-slate-400'
                     }`}>
                       {item.status === 'failed' 
-                        ? (item.errorMsg || "Failed to scan receipt.") 
+                        ? (item.errorMsg || (language === 'pt' ? "Falha ao escanear o recibo." : "Failed to scan receipt.")) 
                         : item.status === 'duplicate' 
-                        ? `Duplicate invoice #${item.errorMsg || 'N/A'}` 
+                        ? (language === 'pt' ? `Nota duplicada #${item.errorMsg || 'N/A'}` : `Duplicate invoice #${item.errorMsg || 'N/A'}`) 
                         : item.stepMsg}
                     </span>
                   </div>
@@ -670,27 +678,27 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
                 <div className="shrink-0 pl-1 select-none">
                   {item.status === 'queued' && (
                     <span className="px-2 py-0.5 text-[9px] font-bold bg-slate-100 dark:bg-slate-850 text-slate-450 rounded-md">
-                      Queued
+                      {language === 'pt' ? 'Na Fila' : 'Queued'}
                     </span>
                   )}
                   {item.status === 'scanning' && (
                     <span className="px-2 py-0.5 text-[9px] font-bold bg-indigo-550 text-white rounded-md animate-pulse">
-                      Analyzing
+                      {language === 'pt' ? 'Analisando' : 'Analyzing'}
                     </span>
                   )}
                   {item.status === 'success' && (
                     <span className="px-2 py-0.5 text-[9px] font-bold bg-emerald-500 text-white rounded-md flex items-center gap-0.5">
-                      <Check className="w-3 h-3" /> Done
+                      <Check className="w-3 h-3" /> {language === 'pt' ? 'OK' : 'Done'}
                     </span>
                   )}
                   {item.status === 'duplicate' && (
                     <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-500 text-white rounded-md flex items-center gap-0.5">
-                      Duplicate
+                      {language === 'pt' ? 'Duplicado' : 'Duplicate'}
                     </span>
                   )}
                   {item.status === 'failed' && (
                     <span className="px-2 py-0.5 text-[9px] font-bold bg-rose-500 text-white rounded-md flex items-center gap-0.5" title={item.errorMsg}>
-                      Failed
+                      {language === 'pt' ? 'Falhou' : 'Failed'}
                     </span>
                   )}
                 </div>
@@ -705,10 +713,12 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
                 <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <h5 className="text-xs font-bold text-amber-800 dark:text-amber-300 uppercase tracking-wide">
-                    Duplicate Receipts Detected &amp; Skipped
+                    {language === 'pt' ? 'Recibos Duplicados Detectados e Ignorados' : 'Duplicate Receipts Detected & Skipped'}
                   </h5>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1 mb-2.5 leading-relaxed">
-                    To maintain clean grocery spreadsheet tables and avoid redundant imports, the scanner automatically bypassed these duplicate invoice records:
+                    {language === 'pt' 
+                      ? 'Para manter as tabelas de compras limpas e evitar importações redundantes, o scanner pulou automaticamente estas notas fiscais duplicadas:' 
+                      : 'To maintain clean grocery spreadsheet tables and avoid redundant imports, the scanner automatically bypassed these duplicate invoice records:'}
                   </p>
                   <div className="bg-white/80 dark:bg-slate-900/85 border border-amber-200/40 dark:border-amber-900/25 rounded-lg overflow-hidden divide-y divide-amber-100/40 dark:divide-amber-900/10">
                     {queue
@@ -719,7 +729,7 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
                             📄 {item.name}
                           </span>
                           <span className="text-amber-750 dark:text-amber-400 font-bold bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-100/30">
-                            Invoice: #{item.errorMsg || "N/A"}
+                            {language === 'pt' ? `Nota: #${item.errorMsg || "N/A"}` : `Invoice: #${item.errorMsg || "N/A"}`}
                           </span>
                         </div>
                       ))}
@@ -754,7 +764,7 @@ const ReceiptScanner = forwardRef<ReceiptScannerRef, ReceiptScannerProps>(({ onS
       {/* Guide Note */}
       <div className="mt-5 bg-slate-50 rounded-xl p-3.5 text-[11px] text-slate-600 leading-normal border border-slate-100/50">
         <div>
-          <span className="font-bold text-slate-800">💡 Quick OCR Scan Tip:</span> Ensure the receipt text is clear, and prices/quantities are visible. <b>Item-split discounts listed below items are automatically detected and deducted</b> from each item's price for an accurate net-total spreadsheet database!
+          <span className="font-bold text-slate-800">💡 {language === 'pt' ? 'Dica Rápida de Escaneamento OCR:' : 'Quick OCR Scan Tip:'}</span> {language === 'pt' ? 'Certifique-se de que o texto do recibo esteja nítido e que os preços/quantidades estejam visíveis.' : 'Ensure the receipt text is clear, and prices/quantities are visible.'} <b>{language === 'pt' ? 'Descontos listados abaixo de itens individuais são detectados e deduzidos automaticamente' : 'Item-split discounts listed below items are automatically detected and deducted'}</b> {language === 'pt' ? 'do preço de cada produto para garantir o valor líquido correto na planilha!' : "from each item's price for an accurate net-total spreadsheet database!"}
         </div>
       </div>
     </div>

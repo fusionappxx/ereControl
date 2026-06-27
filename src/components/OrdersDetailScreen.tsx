@@ -927,35 +927,35 @@ export default function OrdersDetailScreen({ language, onBack, initialChannel }:
                   key: order.channel
                 };
 
-                const orderTiming = 
-                  order.orderTiming ||
-                  order.amoData?.orderTiming || 
-                  order.amoData?.order_timing || 
-                  order.amoData?.scheduling?.orderTiming || 
-                  order.amoData?.scheduling?.order_timing || 
-                  (order.scheduledDateTimeStart || order.amoData?.scheduledDateTimeStart || order.amoData?.scheduled_date_time_start || order.amoData?.delivery?.deliveryDateTime ? "SCHEDULED" : "IMMEDIATE");
+                const rawScheduled = 
+                  order.scheduledDateTimeStart ?? 
+                  order.amoData?.scheduledDateTimeStart ?? 
+                  order.amoData?.scheduled_date_time_start ?? 
+                  order.amoData?.scheduling?.scheduledDateTimeStart ?? 
+                  order.amoData?.scheduling?.scheduled_date_time_start;
 
-                const isScheduled = orderTiming === "SCHEDULED";
+                const hasScheduledTime = (() => {
+                  if (rawScheduled === null || rawScheduled === undefined) return false;
+                  const s = String(rawScheduled).trim();
+                  return s !== "" && s !== "null" && s !== "0";
+                })();
 
-                const scheduledTime = isScheduled ? (
-                  order.scheduledDateTimeStart ||
-                  order.amoData?.scheduledDateTimeStart || 
-                  order.amoData?.scheduled_date_time_start || 
-                  order.amoData?.scheduling?.scheduledDateTimeStart || 
-                  order.amoData?.scheduling?.scheduled_date_time_start || 
-                  order.amoData?.delivery?.deliveryDateTime || 
-                  order.amoData?.delivery?.delivery_date_time || 
-                  order.amoData?.deliveryDateTime || 
-                  order.amoData?.delivery_date_time
-                ) : null;
+                const scheduledTime = hasScheduledTime ? String(rawScheduled) : null;
 
                 const formatLocalTime = (utcString: string) => {
                   try {
                     const date = new Date(utcString);
                     if (isNaN(date.getTime())) return "";
-                    const hours = String(date.getHours()).padStart(2, "0");
-                    const minutes = String(date.getMinutes()).padStart(2, "0");
-                    return `${hours}:${minutes}`;
+                    const formatter = new Intl.DateTimeFormat("en-US", {
+                      timeZone: "America/Sao_Paulo",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false
+                    });
+                    const parts = formatter.formatToParts(date);
+                    const hour = parts.find(p => p.type === "hour")?.value || "00";
+                    const minute = parts.find(p => p.type === "minute")?.value || "00";
+                    return `${hour}:${minute}`;
                   } catch (err) {
                     return "";
                   }
@@ -1093,38 +1093,41 @@ export default function OrdersDetailScreen({ language, onBack, initialChannel }:
                               const addressObj = amo?.delivery?.deliveryAddress;
                               const formatted = addressObj?.formattedAddress;
                               
-                              const orderTiming = 
-                                order.orderTiming ||
-                                order.amoData?.orderTiming || 
-                                order.amoData?.order_timing || 
-                                order.amoData?.scheduling?.orderTiming || 
-                                order.amoData?.scheduling?.order_timing || 
-                                (order.scheduledDateTimeStart || order.amoData?.scheduledDateTimeStart || order.amoData?.scheduled_date_time_start || order.amoData?.delivery?.deliveryDateTime ? "SCHEDULED" : "IMMEDIATE");
+                              const rawScheduled = 
+                                order.scheduledDateTimeStart ?? 
+                                order.amoData?.scheduledDateTimeStart ?? 
+                                order.amoData?.scheduled_date_time_start ?? 
+                                order.amoData?.scheduling?.scheduledDateTimeStart ?? 
+                                order.amoData?.scheduling?.scheduled_date_time_start;
 
-                              const isScheduled = orderTiming === "SCHEDULED";
+                              const hasScheduledTime = (() => {
+                                if (rawScheduled === null || rawScheduled === undefined) return false;
+                                const s = String(rawScheduled).trim();
+                                return s !== "" && s !== "null" && s !== "0";
+                              })();
 
-                              const scheduledTime = isScheduled ? (
-                                order.scheduledDateTimeStart ||
-                                order.amoData?.scheduledDateTimeStart || 
-                                order.amoData?.scheduled_date_time_start || 
-                                order.amoData?.scheduling?.scheduledDateTimeStart || 
-                                order.amoData?.scheduling?.scheduled_date_time_start || 
-                                order.amoData?.delivery?.deliveryDateTime || 
-                                order.amoData?.delivery?.delivery_date_time || 
-                                order.amoData?.deliveryDateTime || 
-                                order.amoData?.delivery_date_time
-                              ) : null;
+                              const scheduledTime = hasScheduledTime ? String(rawScheduled) : null;
                               
                               const formatLocalDateTime = (utcString: string) => {
                                 try {
                                   const date = new Date(utcString);
                                   if (isNaN(date.getTime())) return utcString;
-                                  const day = String(date.getDate()).padStart(2, "0");
-                                  const month = String(date.getMonth() + 1).padStart(2, "0");
-                                  const year = date.getFullYear();
-                                  const hours = String(date.getHours()).padStart(2, "0");
-                                  const minutes = String(date.getMinutes()).padStart(2, "0");
-                                  return `${day}/${month}/${year} ${hours}:${minutes}`;
+                                  const formatter = new Intl.DateTimeFormat("en-US", {
+                                    timeZone: "America/Sao_Paulo",
+                                    year: "numeric",
+                                    month: "2-digit",
+                                    day: "2-digit",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    hour12: false
+                                  });
+                                  const parts = formatter.formatToParts(date);
+                                  const day = parts.find(p => p.type === "day")?.value || "00";
+                                  const month = parts.find(p => p.type === "month")?.value || "00";
+                                  const year = parts.find(p => p.type === "year")?.value || "";
+                                  const hour = parts.find(p => p.type === "hour")?.value || "00";
+                                  const minute = parts.find(p => p.type === "minute")?.value || "00";
+                                  return `${day}/${month}/${year} ${hour}:${minute}`;
                                 } catch (err) {
                                   return utcString;
                                 }

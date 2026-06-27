@@ -18,7 +18,8 @@ import {
   User,
   X,
   MessageCircle,
-  AlarmClock
+  AlarmClock,
+  Clock
 } from "lucide-react";
 import { formatCurrency, safeStorage } from "../utils";
 import type { Order } from "../types";
@@ -756,35 +757,35 @@ export default function OrdersBento({ language, onConfigure, onSelectChannel }: 
               ) : (
                 <div className="divide-y divide-slate-100 font-mono text-xs">
                   {getChannelOrders(selectedChannelForPopup.key).map((order) => {
-                    const orderTiming = 
-                      order.orderTiming ||
-                      order.amoData?.orderTiming || 
-                      order.amoData?.order_timing || 
-                      order.amoData?.scheduling?.orderTiming || 
-                      order.amoData?.scheduling?.order_timing || 
-                      (order.scheduledDateTimeStart || order.amoData?.scheduledDateTimeStart || order.amoData?.scheduled_date_time_start || order.amoData?.delivery?.deliveryDateTime ? "SCHEDULED" : "IMMEDIATE");
+                    const rawScheduled = 
+                      order.scheduledDateTimeStart ?? 
+                      order.amoData?.scheduledDateTimeStart ?? 
+                      order.amoData?.scheduled_date_time_start ?? 
+                      order.amoData?.scheduling?.scheduledDateTimeStart ?? 
+                      order.amoData?.scheduling?.scheduled_date_time_start;
 
-                    const isScheduled = orderTiming === "SCHEDULED";
+                    const hasScheduledTime = (() => {
+                      if (rawScheduled === null || rawScheduled === undefined) return false;
+                      const s = String(rawScheduled).trim();
+                      return s !== "" && s !== "null" && s !== "0";
+                    })();
 
-                    const scheduledTime = isScheduled ? (
-                      order.scheduledDateTimeStart ||
-                      order.amoData?.scheduledDateTimeStart || 
-                      order.amoData?.scheduled_date_time_start || 
-                      order.amoData?.scheduling?.scheduledDateTimeStart || 
-                      order.amoData?.scheduling?.scheduled_date_time_start || 
-                      order.amoData?.delivery?.deliveryDateTime || 
-                      order.amoData?.delivery?.delivery_date_time || 
-                      order.amoData?.deliveryDateTime || 
-                      order.amoData?.delivery_date_time
-                    ) : null;
+                    const scheduledTime = hasScheduledTime ? String(rawScheduled) : null;
 
                     const formatLocalTime = (utcString: string) => {
                       try {
                         const date = new Date(utcString);
                         if (isNaN(date.getTime())) return "";
-                        const hours = String(date.getHours()).padStart(2, "0");
-                        const minutes = String(date.getMinutes()).padStart(2, "0");
-                        return `${hours}:${minutes}`;
+                        const formatter = new Intl.DateTimeFormat("en-US", {
+                          timeZone: "America/Sao_Paulo",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: false
+                        });
+                        const parts = formatter.formatToParts(date);
+                        const hour = parts.find(p => p.type === "hour")?.value || "00";
+                        const minute = parts.find(p => p.type === "minute")?.value || "00";
+                        return `${hour}:${minute}`;
                       } catch (err) {
                         return "";
                       }
@@ -808,6 +809,10 @@ export default function OrdersBento({ language, onConfigure, onSelectChannel }: 
                                 title={language === "pt" ? "Ver perfil do cliente" : "View customer profile"}
                               >
                                 {order.customerName}
+                              </span>
+                              <span className="text-slate-400 text-[10px] font-mono shrink-0 flex items-center gap-0.5" title={language === "pt" ? "Horário do recebimento" : "Order receipt time"}>
+                                <Clock className="w-2.5 h-2.5 text-slate-400" />
+                                {order.time}
                               </span>
                               {scheduledTime && (
                                 <div className="inline-flex items-center gap-0.5 text-emerald-600 bg-emerald-50 border border-emerald-100 px-1 py-0.5 rounded text-[9.5px] font-bold animate-pulse" title={language === "pt" ? "Pedido Agendado" : "Scheduled Order"}>

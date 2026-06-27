@@ -13,11 +13,17 @@ import {
   CreditCard,
   FileText,
   Download,
-  Trash2
+  Trash2,
+  Database,
+  UploadCloud,
+  ShieldCheck,
+  Loader2
 } from "lucide-react";
 import { translations } from "../translations";
 import { OcrErrorLog } from "../types";
-import { getOcrErrorLogs, clearOcrErrorLogs } from "../utils";
+import { getOcrErrorLogs, clearOcrErrorLogs, safeStorage } from "../utils";
+import { db } from "../firebase";
+import { collection, doc, getDocs, getDoc, setDoc } from "firebase/firestore";
 
 interface SettingsScreenProps {
   theme: "light" | "dark";
@@ -41,6 +47,192 @@ export default function SettingsScreen({
   const t = translations[language];
   const [errorLogs, setErrorLogs] = useState<OcrErrorLog[]>(() => getOcrErrorLogs());
   const isPt = language === "pt";
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    setStatusMessage(null);
+    try {
+      const storageKeys = [
+        "orders_list",
+        "orders_channel_configs",
+        "orders_integrations",
+        "grocery_theme",
+        "grocery_currency",
+        "grocery_language",
+        "grocery_custom_photos",
+        "ocr_error_logs",
+        "costing_sheets_initial_subtab"
+      ];
+      const storageData: Record<string, string | null> = {};
+      storageKeys.forEach(key => {
+        storageData[key] = safeStorage.getItem(key);
+      });
+
+      const collectionsToBackup = [
+        "items",
+        "recipes",
+        "fixed_expenses",
+        "channel_matrix",
+        "sales_logs",
+        "inventory_reports",
+        "product_costings"
+      ];
+      
+      const firestoreCollectionsData: Record<string, any[]> = {};
+      
+      for (const colName of collectionsToBackup) {
+        try {
+          const snapshot = await getDocs(collection(db, colName));
+          const docsList = snapshot.docs.map(d => ({
+            id: d.id,
+            data: d.data()
+          }));
+          firestoreCollectionsData[colName] = docsList;
+        } catch (colErr) {
+          console.warn(`Could not backup collection ${colName}:`, colErr);
+          firestoreCollectionsData[colName] = [];
+        }
+      }
+
+      const docsToBackup = [
+        { path: "settings", id: "store_config" },
+        { path: "settings", id: "production_costs" },
+        { path: "settings", id: "volume_and_app_tax" },
+        { path: "settings", id: "inventory" },
+        { path: "configs", id: "categories" },
+        { path: "configs", id: "rules" }
+      ];
+
+      const firestoreDocumentsData: Record<string, any> = {};
+
+      for (const docInfo of docsToBackup) {
+        const pathKey = `${docInfo.path}/${docInfo.id}`;
+        try {
+          const docSnap = await getDoc(doc(db, docInfo.path, docInfo.id));
+          if (docSnap.exists()) {
+            firestoreDocumentsData[pathKey] = docSnap.data();
+          } else {
+            firestoreDocumentsData[pathKey] = null;
+          }
+        } catch (docErr) {
+          console.warn(`Could not backup document ${pathKey}:`, docErr);
+          firestoreDocumentsData[pathKey] = null;
+        }
+      }
+
+      const backupPayload = {
+        version: 1,
+        appName: "ErecKitchen",
+        timestamp: new Date().toISOString(),
+        localStorage: storageData,
+        firestore: {
+          collections: firestoreCollectionsData,
+          documents: firestoreDocumentsData
+        }
+      };
+
+      const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const formattedDate = new Date().toISOString().split('T')[0];
+      link.download = `ereckitchen_backup_${formattedDate}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setStatusMessage({
+        text: isPt 
+          ? "Backup exportado com sucesso!" 
+          : "Backup successfully exported!",
+        type: "success"
+      });
+    } catch (err: any) {
+      console.error("Backup failed:", err);
+      setStatusMessage({
+        text: (isPt ? "Erro ao exportar backup: " : "Backup export failed: ") + (err.message || err),
+        type: "error"
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setStatusMessage(null);
+
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+
+      if (!backup || typeof backup !== "object" || backup.appName !== "ErecKitchen") {
+        throw new Error(isPt ? "Arquivo de backup inválido." : "Invalid backup file.");
+      }
+
+      if (backup.localStorage && typeof backup.localStorage === "object") {
+        Object.entries(backup.localStorage).forEach(([key, value]) => {
+          if (value !== null && typeof value === "string") {
+            safeStorage.setItem(key, value);
+          }
+        });
+      }
+
+      if (backup.firestore?.collections && typeof backup.firestore.collections === "object") {
+        for (const [colName, docsList] of Object.entries(backup.firestore.collections)) {
+          if (Array.isArray(docsList)) {
+            for (const docObj of docsList) {
+              if (docObj && docObj.id && docObj.data) {
+                await setDoc(doc(db, colName, docObj.id), docObj.data);
+              }
+            }
+          }
+        }
+      }
+
+      if (backup.firestore?.documents && typeof backup.firestore.documents === "object") {
+        for (const [pathKey, docData] of Object.entries(backup.firestore.documents)) {
+          if (docData && typeof docData === "object") {
+            const parts = pathKey.split("/");
+            if (parts.length === 2) {
+              const [colPath, docId] = parts;
+              await setDoc(doc(db, colPath, docId), docData);
+            }
+          }
+        }
+      }
+
+      setStatusMessage({
+        text: isPt 
+          ? "Backup importado com sucesso! Recarregando a página..." 
+          : "Backup successfully imported! Reloading page...",
+        type: "success"
+      });
+
+      event.target.value = "";
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 2500);
+
+    } catch (err: any) {
+      console.error("Import failed:", err);
+      setStatusMessage({
+        text: (isPt ? "Erro ao importar backup: " : "Backup import failed: ") + (err.message || err),
+        type: "error"
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const handleDownloadLogFile = () => {
     if (errorLogs.length === 0) return;
@@ -325,6 +517,88 @@ export default function SettingsScreen({
                 {isPt ? "Limpar Log" : "Clear Log"}
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Preference Section 5: Backup and Restore */}
+        <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <h2 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+            <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            {isPt ? "Backup & Restauração" : "Backup & Restore"}
+          </h2>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            {isPt 
+              ? "Exporte todos os seus dados e configurações do site em um único arquivo de backup, ou recupere um backup anterior." 
+              : "Export all your site data and configuration into a single backup file, or restore from a previously exported backup."}
+          </p>
+
+          <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-4">
+            {statusMessage && (
+              <div className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
+                statusMessage.type === "success"
+                  ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-150 text-emerald-800 dark:text-emerald-300"
+                  : "bg-rose-50 dark:bg-rose-950/20 border-rose-150 text-rose-800 dark:text-rose-300"
+              }`}>
+                {statusMessage.type === "success" ? (
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                ) : (
+                  <span className="text-base leading-none mt-0.5 flex-shrink-0">⚠️</span>
+                )}
+                <span className="font-semibold">{statusMessage.text}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <button
+                type="button"
+                id="export-backup-btn"
+                onClick={handleExport}
+                disabled={isExporting || isImporting}
+                className="w-full sm:flex-1 text-xs font-bold py-2.5 px-4 rounded-xl border bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isExporting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                {isPt 
+                  ? (isExporting ? "Exportando..." : "Exportar Backup") 
+                  : (isExporting ? "Exporting..." : "Export Backup")}
+              </button>
+
+              <div className="w-full sm:flex-1 relative">
+                <input
+                  type="file"
+                  id="import-backup-file-input"
+                  accept=".json"
+                  onChange={handleImport}
+                  disabled={isExporting || isImporting}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  id="trigger-import-btn"
+                  onClick={() => document.getElementById("import-backup-file-input")?.click()}
+                  disabled={isExporting || isImporting}
+                  className="w-full text-xs font-bold py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-200 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isImporting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UploadCloud className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                  )}
+                  {isPt 
+                    ? (isImporting ? "Importando..." : "Importar Backup") 
+                    : (isImporting ? "Importing..." : "Import Backup")}
+                </button>
+              </div>
+            </div>
+            
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-normal">
+              {isPt 
+                ? "Nota: A importação irá sobrescrever os dados locais e do banco de dados correspondentes aos itens contidos no arquivo." 
+                : "Note: Importing will overwrite matching database records and local settings with the values contained in the file."}
+            </p>
           </div>
         </div>
 

@@ -135,6 +135,12 @@
         },
         "updatedAt": {
           "type": "string"
+        },
+        "photoUrl": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
         }
       },
       "required": ["recipeName", "ingredients", "portions", "markup"]

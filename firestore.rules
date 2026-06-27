@@ -52,11 +52,15 @@ service cloud.firestore {
 
     function isValidRecipe(data) {
       return data.keys().hasAll(['recipeName', 'ingredients', 'portions', 'markup'])
-        && data.keys().size() <= 6
+        && data.keys().size() <= 15
         && data.recipeName is string && data.recipeName.size() <= 200
         && data.ingredients is list
         && data.portions is number
-        && data.markup is number;
+        && data.markup is number
+        && (!data.keys().hasAny(['createdAt']) || data.createdAt is string)
+        && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is string)
+        && (!data.keys().hasAny(['photoUrl']) || data.photoUrl is string)
+        && (!data.keys().hasAny(['category']) || data.category is string);
     }
 
     function isValidProductionCosts(data) {

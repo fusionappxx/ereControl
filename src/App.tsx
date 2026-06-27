@@ -103,6 +103,45 @@ export default function App() {
   const [newlyAddedCategories, setNewlyAddedCategories] = useState<string[]>([]);
   const [stagedItems, setStagedItems] = useState<ReceiptItem[]>([]);
 
+  // Real-time synchronization of recipes and orders count
+  const [recipesCount, setRecipesCount] = useState<number>(0);
+  const [ordersCount, setOrdersCount] = useState<number>(0);
+
+  // Subscribe to recipes collection
+  useEffect(() => {
+    const recipesCollection = collection(db, "recipes");
+    const unsubscribe = onSnapshot(recipesCollection, (snapshot) => {
+      setRecipesCount(snapshot.size);
+    }, (error) => {
+      console.error("Error loading recipes count:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Sync orders count from safeStorage
+  useEffect(() => {
+    const handleSyncOrders = () => {
+      try {
+        const savedOrders = safeStorage.getItem("orders_list");
+        if (savedOrders) {
+          const parsed = JSON.parse(savedOrders);
+          if (Array.isArray(parsed)) {
+            setOrdersCount(parsed.length);
+          }
+        }
+      } catch (e) {
+        console.error("Error reading orders count:", e);
+      }
+    };
+    handleSyncOrders();
+    window.addEventListener("storage", handleSyncOrders);
+    const interval = setInterval(handleSyncOrders, 2000);
+    return () => {
+      window.removeEventListener("storage", handleSyncOrders);
+      clearInterval(interval);
+    };
+  }, []);
+
   // 1. Listen for Items
   useEffect(() => {
     const itemsCollection = collection(db, "items");
@@ -1269,102 +1308,120 @@ export default function App() {
               />
 
               {/* Bento Board Stats Dashboard */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Card 1: Total Spent */}
-                <div className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-3.5 shadow-2xs hover:shadow-xs transition-shadow">
-                  <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-emerald-600 shrink-0">
-                    <TrendingUp className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] sm:text-[10.5px] font-bold text-slate-400 uppercase tracking-wider leading-tight">
-                      {language === "pt" ? "Despesa Total Mensal" : "Monthly Total Expense"}
-                    </p>
-                    <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1 font-mono leading-none">
-                      {formatCurrency(calculatedStats.monthlyTotalExpense)}
-                    </h3>
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Left: Receipt Scan Center (Occupies 2 columns on lg) */}
+                <div className="lg:col-span-2">
+                  <ReceiptScanner 
+                    ref={scannerRef}
+                    onScanSuccess={handleScanSuccess} 
+                    existingInvoices={existingInvoices} 
+                    onBatchComplete={() => setCurrentTab('staged-review')}
+                    language={language}
+                  />
                 </div>
 
-                {/* Card 2: Database Stats */}
-                <div className="bg-white rounded-2xl border border-slate-100 p-5 flex items-start gap-4 shadow-2xs hover:shadow-xs transition-shadow">
-                  <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-blue-600 self-start mt-0.5">
-                    <Database className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Database</p>
-                    <div className="grid grid-cols-2 gap-3 border-t border-slate-50 pt-2">
-                      <div>
-                        <button
-                          id="uniqueItems-stats-btn"
-                          type="button"
-                          onClick={() => {
-                            setSelectedItemForDetail(null);
-                            setCurrentTab('uniqueItems');
-                          }}
-                          className="text-left cursor-pointer group/item hover:bg-slate-50 dark:hover:bg-slate-800/40 p-2 -m-2 rounded-xl transition-all focus:outline-hidden block w-full border border-transparent hover:border-emerald-100/50 dark:hover:border-emerald-900/10"
-                          title="Click to view unique items spreadsheet database"
-                        >
-                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 group-hover/item:text-emerald-500 uppercase tracking-tight transition-colors">Unique Items</p>
-                          <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-200 font-mono mt-0.5 group-hover/item:text-emerald-600 dark:group-hover/item:text-emerald-400 transition-colors">{uniqueItemsCount}</h4>
-                        </button>
-                      </div>
-                      <div className="border-l border-slate-100 pl-3">
-                        <button
-                          id="uniqueInvoices-stats-btn"
-                          type="button"
-                          onClick={() => {
-                            setSelectedItemForDetail(null);
-                            setCurrentTab('uniqueInvoices');
-                          }}
-                          className="text-left cursor-pointer group/item hover:bg-slate-50 dark:hover:bg-slate-800/40 p-2 -m-2 rounded-xl transition-all focus:outline-hidden block w-full border border-transparent hover:border-blue-100/50 dark:hover:border-blue-900/10"
-                          title="Click to view unique invoices details"
-                        >
-                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 group-hover/item:text-blue-500 uppercase tracking-tight transition-colors">Unique Invoices</p>
-                          <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-200 font-mono mt-0.5 group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400 transition-colors">{existingInvoices.length}</h4>
-                        </button>
+                {/* Right Column: Database at top, Monthly Total Expense below */}
+                <div className="flex flex-col gap-4 lg:col-span-1 justify-stretch">
+                  {/* Card 2: Database Stats */}
+                  <div className="bg-white rounded-2xl border border-slate-100 p-5 flex items-start gap-4 shadow-2xs hover:shadow-xs transition-shadow flex-1">
+                    <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-blue-600 self-start mt-0.5">
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">Database</p>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-4 border-t border-slate-50 pt-2">
+                        <div>
+                          <button
+                            id="uniqueItems-stats-btn"
+                            type="button"
+                            onClick={() => {
+                              setSelectedItemForDetail(null);
+                              setCurrentTab('uniqueItems');
+                            }}
+                            className="text-left cursor-pointer group/item hover:bg-slate-50 dark:hover:bg-slate-800/40 p-2 -m-2 rounded-xl transition-all focus:outline-hidden block w-full border border-transparent hover:border-emerald-100/50 dark:hover:border-emerald-900/10"
+                            title="Click to view unique items spreadsheet database"
+                          >
+                            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 group-hover/item:text-emerald-500 uppercase tracking-tight transition-colors">
+                              {language === "pt" ? "Itens Únicos" : "Unique Items"}
+                            </p>
+                            <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-200 font-mono mt-0.5 group-hover/item:text-emerald-600 dark:group-hover/item:text-emerald-400 transition-colors">{uniqueItemsCount}</h4>
+                          </button>
+                        </div>
+                        <div className="border-l border-slate-100 pl-3">
+                          <button
+                            id="uniqueInvoices-stats-btn"
+                            type="button"
+                            onClick={() => {
+                              setSelectedItemForDetail(null);
+                              setCurrentTab('uniqueInvoices');
+                            }}
+                            className="text-left cursor-pointer group/item hover:bg-slate-50 dark:hover:bg-slate-800/40 p-2 -m-2 rounded-xl transition-all focus:outline-hidden block w-full border border-transparent hover:border-blue-100/50 dark:hover:border-blue-900/10"
+                            title="Click to view unique invoices details"
+                          >
+                            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 group-hover/item:text-blue-500 uppercase tracking-tight transition-colors">
+                              {language === "pt" ? "Notas Fiscais" : "Unique Invoices"}
+                            </p>
+                            <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-200 font-mono mt-0.5 group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400 transition-colors">{existingInvoices.length}</h4>
+                          </button>
+                        </div>
+                        <div className="border-t border-slate-50/70 pt-3">
+                          <button
+                            id="recipeSheets-stats-btn"
+                            type="button"
+                            onClick={() => {
+                              setSelectedItemForDetail(null);
+                              setCurrentTab('recipe-costing-sheets');
+                            }}
+                            className="text-left cursor-pointer group/item hover:bg-slate-50 dark:hover:bg-slate-800/40 p-2 -m-2 rounded-xl transition-all focus:outline-hidden block w-full border border-transparent hover:border-amber-100/50 dark:hover:border-amber-900/10"
+                            title="Click to view recipe costing sheets"
+                          >
+                            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 group-hover/item:text-amber-550 uppercase tracking-tight transition-colors">
+                              {language === "pt" ? "Fichas de Receita" : "Recipe Sheets"}
+                            </p>
+                            <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-200 font-mono mt-0.5 group-hover/item:text-amber-600 dark:group-hover/item:text-amber-550 transition-colors">{recipesCount}</h4>
+                          </button>
+                        </div>
+                        <div className="border-l border-slate-100 pl-3 border-t border-slate-50/70 pt-3">
+                          <button
+                            id="totalOrders-stats-btn"
+                            type="button"
+                            onClick={() => {
+                              setSelectedItemForDetail(null);
+                              setCurrentTab('orders-detail');
+                            }}
+                            className="text-left cursor-pointer group/item hover:bg-slate-50 dark:hover:bg-slate-800/40 p-2 -m-2 rounded-xl transition-all focus:outline-hidden block w-full border border-transparent hover:border-rose-100/50 dark:hover:border-rose-900/10"
+                            title="Click to view order details"
+                          >
+                            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 group-hover/item:text-rose-500 uppercase tracking-tight transition-colors">
+                              {language === "pt" ? "Total de Pedidos" : "Total Orders"}
+                            </p>
+                            <h4 className="text-base font-extrabold text-slate-800 dark:text-slate-200 font-mono mt-0.5 group-hover/item:text-rose-600 dark:group-hover/item:text-rose-400 transition-colors">{ordersCount}</h4>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                 {/* Card 3: Receipt Scan Center Actions */}
-                <div className="bg-white rounded-2xl border border-slate-100 p-5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow min-h-[110px]">
-                  <div className="flex items-center gap-3">
+                  {/* Card 1: Total Spent (Monthly Total Expense) */}
+                  <div className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-3.5 shadow-2xs hover:shadow-xs transition-shadow flex-1">
                     <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-emerald-600 shrink-0">
-                      <Camera className="w-5 h-5" />
+                      <TrendingUp className="w-5 h-5" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-bold text-slate-800 uppercase tracking-wider leading-none">
-                        {language === "pt" ? "Central de Digitalização" : "Receipt Scan Center"}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] sm:text-[10.5px] font-bold text-slate-400 uppercase tracking-wider leading-tight">
+                        {language === "pt" ? "Despesa Total Mensal" : "Monthly Total Expense"}
                       </p>
+                      <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1 font-mono leading-none">
+                        {formatCurrency(calculatedStats.monthlyTotalExpense)}
+                      </h3>
                     </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => scannerRef.current?.triggerChooseFile()}
-                      className="bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-bold text-[11px] px-2.5 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
-                      title={language === "pt" ? "Escolher arquivos da sua galeria de fotos" : "Choose photos directly from your photo library"}
-                    >
-                      <ImageIcon className="w-3.5 h-3.5 text-sky-450 shrink-0" />
-                      <span className="truncate">{language === "pt" ? "Galeria" : "Gallery"}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => scannerRef.current?.triggerTakePhoto()}
-                      className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-[11px] px-2.5 py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
-                      title={language === "pt" ? "Tirar foto usando a câmera do seu dispositivo" : "Take direct photo using device native camera"}
-                    >
-                      <Camera className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">{language === "pt" ? "Câmera" : "Camera"}</span>
-                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* Main Scanner Section (Visually hidden scanner component, visible duplicate error banner) */}
-              {duplicateScanError ? (
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+              {/* Main Scanner Section - Duplicate alert banner only (since scanner is visible in the bento grid) */}
+              {duplicateScanError && (
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start mt-4">
                   <div className="md:col-span-12">
                     <div className="bg-white rounded-2xl shadow-sm border border-rose-100 p-8 text-center max-w-2xl mx-auto animate-fade-in">
                       <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-100 text-rose-500">
@@ -1406,16 +1463,6 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="hidden">
-                  <ReceiptScanner 
-                    ref={scannerRef}
-                    onScanSuccess={handleScanSuccess} 
-                    existingInvoices={existingInvoices} 
-                    onBatchComplete={() => setCurrentTab('staged-review')}
-                    language={language}
-                  />
                 </div>
               )}
 
