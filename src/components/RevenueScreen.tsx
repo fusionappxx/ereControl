@@ -86,6 +86,7 @@ interface StoreBrand {
   city?: string;
   storeIcon?: string;
   address?: string;
+  phone?: string;
 }
 
 interface RevenueScreenProps {
@@ -202,7 +203,8 @@ export default function RevenueScreen({
             taxId: data.taxId || "",
             defaultTaxPercent: Number(data.defaultTaxPercent) ?? 12.0,
             monthlyTargetRevenue: Number(data.monthlyTargetRevenue) ?? 10000,
-            activeChannels: ["iFood", "Website"]
+            activeChannels: ["iFood", "Website"],
+            phone: data.phone || ""
           };
           setStores([singleStore]);
           setActiveStoreId("default_store");
@@ -220,7 +222,8 @@ export default function RevenueScreen({
           taxId: "12.345.678/0001-99",
           defaultTaxPercent: 12.0,
           monthlyTargetRevenue: 10000,
-          activeChannels: ["iFood", "Website"]
+          activeChannels: ["iFood", "Website"],
+          phone: ""
         };
         setStores([defaultStore]);
         setActiveStoreId("store_1");
@@ -569,7 +572,8 @@ export default function RevenueScreen({
         defaultTaxPercent: Number(updatedStore.defaultTaxPercent) || 0,
         monthlyTargetRevenue: Number(updatedStore.monthlyTargetRevenue) || 0,
         city: updatedStore.city || "",
-        address: updatedStore.address || ""
+        address: updatedStore.address || "",
+        phone: updatedStore.phone || ""
       });
       trgToast(language === "pt" ? "Configurações da loja salvas com sucesso!" : "Store configuration saved successfully!");
     } catch (err) {
@@ -1553,6 +1557,23 @@ export default function RevenueScreen({
                       value={activeStore.address || ""}
                       onChange={(e) => {
                         const updated = stores.map((s) => s.id === activeStore.id ? { ...s, address: e.target.value } : s);
+                        setStores(updated);
+                      }}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 outline-hidden px-3.5 py-2.5 rounded-xl text-slate-800 focus:border-emerald-300 focus:bg-white focus:ring-1 focus:ring-emerald-300 transition-all"
+                    />
+                  </div>
+
+                  {/* Store Phone Number */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 block">
+                      {language === "pt" ? "Telefone do Estabelecimento" : "Store Phone Number"}
+                    </label>
+                    <input 
+                      type="text"
+                      placeholder={language === "pt" ? "Ex: 11999999999" : "e.g. 11999999999"}
+                      value={activeStore.phone || ""}
+                      onChange={(e) => {
+                        const updated = stores.map((s) => s.id === activeStore.id ? { ...s, phone: e.target.value } : s);
                         setStores(updated);
                       }}
                       className="w-full text-xs bg-slate-50 border border-slate-200 outline-hidden px-3.5 py-2.5 rounded-xl text-slate-800 focus:border-emerald-300 focus:bg-white focus:ring-1 focus:ring-emerald-300 transition-all"

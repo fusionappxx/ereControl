@@ -90,6 +90,7 @@ export default function StorefrontPortal({ language, onAdminLoginClick }: Storef
   // Autocomplete and delivery fee states
   const [storeCity, setStoreCity] = useState("");
   const [storeAddress, setStoreAddress] = useState("");
+  const [storePhone, setStorePhone] = useState("");
   const [deliveryType, setDeliveryType] = useState<"delivery" | "retirada">("delivery");
   const [toast, setToast] = useState<{ message: string } | null>(null);
 
@@ -477,6 +478,7 @@ export default function StorefrontPortal({ language, onAdminLoginClick }: Storef
             setStoreName(activeStore.storeName || "");
             setStoreCity(activeStore.city || "");
             setStoreAddress(activeStore.address || "");
+            setStorePhone(activeStore.phone || "");
             setActiveChannels(activeStore.activeChannels || []);
             setStoreIcon(activeStore.storeIcon || undefined);
             return;
@@ -485,6 +487,7 @@ export default function StorefrontPortal({ language, onAdminLoginClick }: Storef
         setStoreName(data.storeName || "");
         setStoreCity(data.city || "");
         setStoreAddress(data.address || "");
+        setStorePhone(data.phone || "");
         setActiveChannels(data.activeChannels || ["iFood", "Website"]);
         setStoreIcon(data.storeIcon || undefined);
       }
@@ -1050,11 +1053,24 @@ export default function StorefrontPortal({ language, onAdminLoginClick }: Storef
             </div>
           </div>
 
+          {/* Cancel Order Button */}
+          <button
+            onClick={() => {
+              const cleanPhone = (storePhone || "").replace(/\D/g, "");
+              const orderId = activeOrder.id || "";
+              const url = `https://wa.me/55${cleanPhone}?text=Gostaria%20de%20cancelar%20o%20pedido%20${encodeURIComponent(orderId)}.`;
+              window.open(url, "_blank");
+            }}
+            className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-500 font-bold text-xs rounded-xl cursor-pointer border border-slate-200 tracking-wider uppercase transition-all flex items-center justify-center gap-2"
+          >
+            {language === "pt" ? "Cancelar Pedido" : "Cancel Order"}
+          </button>
+
           <button
             onClick={handleResetActiveOrder}
             className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer shadow-md shadow-slate-950/15 tracking-wider uppercase transition-all"
           >
-            {language === "pt" ? "Fazer Novo Pedido" : "Back to Catalog / Place New Order"}
+            {language === "pt" ? "Voltar" : "Back"}
           </button>
         </div>
       ) : (

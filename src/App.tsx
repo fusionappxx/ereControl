@@ -301,6 +301,28 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 3b. Listen for Language Config document on the server
+  useEffect(() => {
+    const docRef = doc(db, "configs", "language");
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data && (data.language === "en" || data.language === "pt")) {
+          setLanguage(data.language);
+        }
+      } else {
+        // Fallback to local storage or "pt"
+        const local = safeStorage.getItem("grocery_language");
+        const defaultLang = (local === "en" || local === "pt") ? local : "pt";
+        setDoc(docRef, { language: defaultLang })
+          .catch((err) => handleFirestoreError(err, OperationType.WRITE, "configs/language"));
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, "configs/language");
+    });
+    return () => unsubscribe();
+  }, []);
+
   // 4. Clean up / Prune categories with no items (and not newly added in current session)
   useEffect(() => {
     if (isDbLoading || items.length === 0 || categories.length === 0) return;
@@ -361,7 +383,7 @@ export default function App() {
   const [selectedOrderDetailChannel, setSelectedOrderDetailChannel] = useState<string>("all");
   const [initialRevenueSubTab, setInitialRevenueSubTab] = useState<'store-config' | 'daily' | 'summary'>('summary');
   const [activeCostingTab, setActiveCostingTab] = useState<'fixed' | 'production' | 'recipe'>('fixed');
-  const [initialClientControlSubTab, setInitialClientControlSubTab] = useState<'directory' | 'prices' | 'delivery'>('directory');
+  const [initialClientControlSubTab, setInitialClientControlSubTab] = useState<'directory' | 'prices' | 'delivery' | 'categories'>('directory');
 
   // Load and manage custom preferences
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -410,6 +432,15 @@ export default function App() {
       safeStorage.setItem("grocery_language", language);
     } catch {}
   }, [language]);
+
+  const handleLanguageChange = async (newLang: 'en' | 'pt') => {
+    try {
+      const docRef = doc(db, "configs", "language");
+      await setDoc(docRef, { language: newLang });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, "configs/language");
+    }
+  };
 
   // Support custom tab switches from scanned queue
   useEffect(() => {
@@ -1919,7 +1950,7 @@ export default function App() {
               language={language}
               onThemeChange={setTheme}
               onCurrencyChange={setCurrency}
-              onLanguageChange={setLanguage}
+              onLanguageChange={handleLanguageChange}
               onBack={() => setCurrentTab('scan')}
             />
           )}

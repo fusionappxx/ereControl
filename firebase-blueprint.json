@@ -70,6 +70,18 @@
       },
       "required": ["mapping"]
     },
+    "languageConfig": {
+      "title": "LanguageConfig",
+      "description": "Global user interface language setting",
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": ["en", "pt"]
+        }
+      },
+      "required": ["language"]
+    },
     "fixedExpense": {
       "title": "FixedExpense",
       "description": "A recurring operational cost of the bakery kitchen",
@@ -394,6 +406,10 @@
     "/configs/rules": {
       "schema": "rulesConfig",
       "description": "Global, collaborative dynamic recognition mapping rules"
+    },
+    "/configs/language": {
+      "schema": "languageConfig",
+      "description": "Global user interface language setting"
     },
     "/fixed_expenses/{expenseId}": {
       "schema": "fixedExpense",

@@ -42,6 +42,11 @@ service cloud.firestore {
         && data.mapping is map;
     }
 
+    function isValidLanguageConfig(data) {
+      return data.language is string
+        && (data.language == 'pt' || data.language == 'en');
+    }
+
     function isValidFixedExpense(data) {
       return data.keys().hasAll(['name', 'month', 'value'])
         && data.keys().size() <= 5
@@ -144,13 +149,18 @@ service cloud.firestore {
     }
 
     match /configs/categories {
-      allow get: if true;
+      allow read: if true;
       allow write: if isValidCategoriesConfig(request.resource.data);
     }
 
     match /configs/rules {
-      allow get: if true;
+      allow read: if true;
       allow write: if isValidRulesConfig(request.resource.data);
+    }
+
+    match /configs/language {
+      allow read: if true;
+      allow write: if isValidLanguageConfig(request.resource.data);
     }
 
     match /product_costings/{productKey} {
