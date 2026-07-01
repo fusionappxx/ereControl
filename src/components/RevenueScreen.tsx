@@ -83,6 +83,9 @@ interface StoreBrand {
   defaultTaxPercent: number;
   monthlyTargetRevenue: number;
   activeChannels: string[];
+  city?: string;
+  storeIcon?: string;
+  address?: string;
 }
 
 interface RevenueScreenProps {
@@ -141,6 +144,12 @@ export default function RevenueScreen({
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Brazilian Municipalities Autocomplete States
+  const [citiesList, setCitiesList] = useState<Array<{ nome: string; uf: string; label: string }>>([]);
+  const [isCitiesLoading, setIsCitiesLoading] = useState(false);
+  const [cityInput, setCityInput] = useState("");
+  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
 
   // Log Form State
   const [logDate, setLogDate] = useState<string>(() => {
@@ -295,6 +304,66 @@ export default function RevenueScreen({
       }
     }
   }, [activeStore, selectedChannel]);
+
+  // Load/sync cityInput with active store
+  useEffect(() => {
+    if (activeStore) {
+      setCityInput(activeStore.city || "");
+    }
+  }, [activeStore]);
+
+  // Fetch Brazilian municipalities from IBGE API
+  useEffect(() => {
+    if (activeTab !== "store-config") return;
+    if (citiesList.length > 0) return;
+
+    let active = true;
+    setIsCitiesLoading(true);
+    fetch("https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        if (Array.isArray(data)) {
+          const list = data.map((item: any) => {
+            const cityName = item.nome;
+            const uf = item.microrregiao?.mesorregiao?.UF?.sigla || item.regiao_imediata?.regiao_intermediaria?.UF?.sigla || "BR";
+            return {
+              nome: cityName,
+              uf: uf,
+              label: `${cityName} - ${uf}`
+            };
+          });
+          setCitiesList(list);
+        }
+      })
+      .catch((err) => {
+        console.error("Error fetching Brazilian municipalities:", err);
+      })
+      .finally(() => {
+        if (active) setIsCitiesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeTab, citiesList.length]);
+
+  const citySuggestions = useMemo(() => {
+    if (!cityInput.trim()) return [];
+    const query = cityInput.toLowerCase();
+    return citiesList.filter((c) => c.label.toLowerCase().includes(query)).slice(0, 10);
+  }, [citiesList, cityInput]);
+
+  const cityValidationError = useMemo(() => {
+    if (!cityInput.trim()) return null;
+    const exists = citiesList.some((c) => c.label.toLowerCase() === cityInput.trim().toLowerCase());
+    if (citiesList.length > 0 && !exists) {
+      return language === "pt" 
+        ? "Por favor, selecione uma cidade válida da lista oficial (Wikipédia/IBGE)." 
+        : "Please select a valid city from the official municipalities list.";
+    }
+    return null;
+  }, [citiesList, cityInput, language]);
 
   // Load Recipes
   useEffect(() => {
@@ -498,7 +567,9 @@ export default function RevenueScreen({
         storeName: updatedStore.storeName,
         taxId: updatedStore.taxId,
         defaultTaxPercent: Number(updatedStore.defaultTaxPercent) || 0,
-        monthlyTargetRevenue: Number(updatedStore.monthlyTargetRevenue) || 0
+        monthlyTargetRevenue: Number(updatedStore.monthlyTargetRevenue) || 0,
+        city: updatedStore.city || "",
+        address: updatedStore.address || ""
       });
       trgToast(language === "pt" ? "Configurações da loja salvas com sucesso!" : "Store configuration saved successfully!");
     } catch (err) {
@@ -1404,10 +1475,160 @@ export default function RevenueScreen({
                   </div>
 
 
+                  {/* City Select and Validation (Wikipédia/IBGE Brazilian Municipalities List) */}
+                  <div className="space-y-1.5 relative">
+                    <label className="text-xs font-bold text-slate-500 block">
+                      {language === "pt" ? "Cidade do Estabelecimento" : "Store Location City"}
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type="text"
+                        required
+                        placeholder={language === "pt" ? "Digite para pesquisar cidade..." : "Type to search city..."}
+                        value={cityInput}
+                        onChange={(e) => {
+                          setCityInput(e.target.value);
+                          setShowCitySuggestions(true);
+                          
+                          // If there's an exact match in citiesList as they type, let's update stores array to prevent mismatch
+                          const exactMatch = citiesList.find(c => c.label.toLowerCase() === e.target.value.trim().toLowerCase());
+                          const updated = stores.map((s) => s.id === activeStore.id ? { ...s, city: exactMatch ? exactMatch.label : e.target.value } : s);
+                          setStores(updated);
+                        }}
+                        onFocus={() => setShowCitySuggestions(true)}
+                        onBlur={() => {
+                          // Allow click on suggestions to register before closing suggestions popup
+                          setTimeout(() => {
+                            setShowCitySuggestions(false);
+                          }, 250);
+                        }}
+                        className={`w-full text-xs bg-slate-50 border outline-hidden px-3.5 py-2.5 rounded-xl text-slate-800 transition-all ${
+                          cityValidationError ? "border-rose-400 focus:ring-1 focus:ring-rose-500" : "border-slate-200 focus:border-emerald-300 focus:bg-white focus:ring-1 focus:ring-emerald-300"
+                        }`}
+                      />
+                      {isCitiesLoading && (
+                        <div className="absolute right-3.5 top-3 flex h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
+                      )}
+                    </div>
+
+                    {showCitySuggestions && citySuggestions.length > 0 && (
+                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-150 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-slate-50">
+                        {citySuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.label}
+                            type="button"
+                            onClick={() => {
+                              setCityInput(suggestion.label);
+                              setShowCitySuggestions(false);
+                              const updated = stores.map((s) => s.id === activeStore.id ? { ...s, city: suggestion.label } : s);
+                              setStores(updated);
+                            }}
+                            className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+                          >
+                            {suggestion.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {cityValidationError ? (
+                      <p className="text-[10px] text-rose-500 font-semibold mt-1">{cityValidationError}</p>
+                    ) : (
+                      <p className="text-[9.5px] text-slate-400 mt-1">
+                        {language === "pt"
+                          ? "Permitido apenas cidades existentes na lista de municípios do Brasil (IBGE)."
+                          : "Only allowed municipalities existing in the official Brazil catalog list."}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Store Physical Address */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 block">
+                      {language === "pt" ? "Endereço Físico do Estabelecimento" : "Store Physical Address"}
+                    </label>
+                    <input 
+                      type="text"
+                      placeholder={language === "pt" ? "Ex: Rua das Flores, 123 - Centro" : "e.g. 123 Flower St - Downtown"}
+                      value={activeStore.address || ""}
+                      onChange={(e) => {
+                        const updated = stores.map((s) => s.id === activeStore.id ? { ...s, address: e.target.value } : s);
+                        setStores(updated);
+                      }}
+                      className="w-full text-xs bg-slate-50 border border-slate-200 outline-hidden px-3.5 py-2.5 rounded-xl text-slate-800 focus:border-emerald-300 focus:bg-white focus:ring-1 focus:ring-emerald-300 transition-all"
+                    />
+                  </div>
+
+                  {/* Store Icon Upload */}
+                  {activeStore && (
+                    <div className="space-y-1.5 border-t border-slate-100 pt-4">
+                      <label className="text-xs font-bold text-slate-500 block">
+                        {language === "pt" ? "Logotipo / Ícone da Loja" : "Store Icon / Logo"}
+                      </label>
+                      <div className="flex items-center gap-4 bg-slate-50 border border-slate-200 p-4 rounded-xl">
+                        <div className="w-16 h-16 rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden shrink-0 relative shadow-2xs">
+                          {activeStore.storeIcon ? (
+                            <img 
+                              src={activeStore.storeIcon} 
+                              alt="Store Icon Preview" 
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="text-slate-400 flex flex-col items-center">
+                              <span className="text-[9px] font-bold uppercase text-slate-400">Sem Ícone</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1 flex-1">
+                          <div className="flex gap-2">
+                            <label className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[11px] font-bold py-1.5 px-3 rounded-lg cursor-pointer transition-colors block text-center shrink-0">
+                              {language === "pt" ? "Selecionar Imagem" : "Select Image"}
+                              <input 
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                      const base64String = reader.result as string;
+                                      const updated = stores.map((s) => s.id === activeStore.id ? { ...s, storeIcon: base64String } : s);
+                                      setStores(updated);
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+                            {activeStore.storeIcon && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = stores.map((s) => s.id === activeStore.id ? { ...s, storeIcon: undefined } : s);
+                                  setStores(updated);
+                                }}
+                                className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-[11px] font-bold py-1.5 px-3 rounded-lg cursor-pointer transition-colors shrink-0"
+                              >
+                                {language === "pt" ? "Remover" : "Remove"}
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[9px] text-slate-400">
+                            {language === "pt" 
+                              ? "Formatos aceitos: JPG, PNG. Recomenda-se formato quadrado (1:1)." 
+                              : "Recommended: 1:1 square ratio image. Max 1MB."}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+
                   {/* SAVE ACTION */}
                   <button
                     type="submit"
-                    disabled={isSaving}
+                    disabled={isSaving || !!cityValidationError}
                     className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-3.5 px-4 rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />

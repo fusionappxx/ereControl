@@ -23,6 +23,13 @@ interface FirestoreErrorInfo {
   authInfo: {
     userId?: string | null;
     email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
   };
 }
 
@@ -32,9 +39,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     authInfo: {
       userId: null,
       email: null,
+      emailVerified: null,
+      isAnonymous: null,
+      tenantId: null,
+      providerInfo: []
     },
     operationType,
     path
   };
   console.error("Firestore Error: ", JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }

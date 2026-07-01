@@ -48,6 +48,54 @@ interface SavedRecipe {
   name: string;
 }
 
+const compressBase64Image = (base64Str: string, maxWidth = 400, maxHeight = 400, quality = 0.7): Promise<string> => {
+  return new Promise((resolve) => {
+    if (!base64Str || !base64Str.startsWith("data:image")) {
+      resolve(base64Str);
+      return;
+    }
+    // If it's already quite small (e.g. under 100KB), no need to compress it
+    if (base64Str.length < 150000) {
+      resolve(base64Str);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height *= maxWidth / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width *= maxHeight / height;
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL("image/jpeg", quality);
+        resolve(compressed);
+      } else {
+        resolve(base64Str);
+      }
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+    img.src = base64Str;
+  });
+};
+
 export default function RecipeCostingSheetsScreen({ items, language = "en", onBack, initialSubTab }: RecipeCostingSheetsScreenProps) {
   // Navigation & selection states
   const [selectedProduct, setSelectedProduct] = useState<string>("");
@@ -67,10 +115,11 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string;
-      setRecipePhotoUrl(base64String);
-      saveRecipeToFirestore({ photoUrl: base64String });
+      const compressedBase64 = await compressBase64Image(base64String);
+      setRecipePhotoUrl(compressedBase64);
+      saveRecipeToFirestore({ photoUrl: compressedBase64 });
     };
     reader.readAsDataURL(file);
   };
@@ -336,12 +385,22 @@ export default function RecipeCostingSheetsScreen({ items, language = "en", onBa
     if (!selectedProduct) return;
     const docKey = selectedProduct.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
     const docRef = doc(db, "recipes", docKey);
+    
+    let photoToSave = updated.photoUrl !== undefined ? updated.photoUrl : recipePhotoUrl;
+    if (photoToSave && photoToSave.startsWith("data:image") && photoToSave.length > 150000) {
+      try {
+        photoToSave = await compressBase64Image(photoToSave);
+      } catch (e) {
+        console.error("Failed to compress image on save:", e);
+      }
+    }
+
     const payload = {
       recipeName: selectedProduct,
       ingredients: updated.ingredients !== undefined ? updated.ingredients : recipeIngredients,
       portions: updated.portions !== undefined ? updated.portions : recipePortions,
       markup: updated.markup !== undefined ? updated.markup : recipeMarkup,
-      photoUrl: updated.photoUrl !== undefined ? updated.photoUrl : recipePhotoUrl,
+      photoUrl: photoToSave,
       category: updated.category !== undefined ? updated.category : recipeCategory,
       updatedAt: new Date().toISOString()
     };

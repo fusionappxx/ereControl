@@ -41,6 +41,11 @@ import StagingReviewScreen from "./components/StagingReviewScreen";
 import OrdersBento from "./components/OrdersBento";
 import IntegrationsScreen from "./components/IntegrationsScreen";
 import OrdersDetailScreen from "./components/OrdersDetailScreen";
+import StorefrontPortal from "./components/StorefrontPortal";
+import ClientControlBento from "./components/ClientControlBento";
+import ClientControlScreen from "./components/ClientControlScreen";
+import { Order } from "./types";
+import { Lock, Unlock, X } from "lucide-react";
 import { ReceiptItem, ScannedReceiptResult } from "./types";
 import { generateId, cleanDate, DEMO_RECEIPT_ITEMS, formatCurrency, setGlobalCurrency, resolveItemCategory, safeStorage } from "./utils";
 import { translations } from "./translations";
@@ -106,6 +111,39 @@ export default function App() {
   // Real-time synchronization of recipes and orders count
   const [recipesCount, setRecipesCount] = useState<number>(0);
   const [ordersCount, setOrdersCount] = useState<number>(0);
+  const [appStores, setAppStores] = useState<any[]>([]);
+  const [appChannelMatrices, setAppChannelMatrices] = useState<any[]>([]);
+
+  // Subscribe to stores config
+  useEffect(() => {
+    const docRef = doc(db, "settings", "store_config");
+    const unsubscribe = onSnapshot(docRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        if (data.stores && Array.isArray(data.stores)) {
+          setAppStores(data.stores);
+        }
+      }
+    }, (error) => {
+      console.error("Error loading app stores config:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Subscribe to channel matrices
+  useEffect(() => {
+    const colRef = collection(db, "channel_matrix");
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
+      const docsList: any[] = [];
+      snapshot.forEach((doc) => {
+        docsList.push({ id: doc.id, ...doc.data() });
+      });
+      setAppChannelMatrices(docsList);
+    }, (error) => {
+      console.error("Error loading channel matrices:", error);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Subscribe to recipes collection
   useEffect(() => {
@@ -118,7 +156,20 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync orders count from safeStorage
+  // Sync orders count and array from safeStorage, and manage admin authentication
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [adminMode, setAdminMode] = useState<boolean>(() => {
+    try {
+      return safeStorage.getItem("adminModeAuthenticated") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [loginError, setLoginError] = useState("");
+
   useEffect(() => {
     const handleSyncOrders = () => {
       try {
@@ -126,11 +177,18 @@ export default function App() {
         if (savedOrders) {
           const parsed = JSON.parse(savedOrders);
           if (Array.isArray(parsed)) {
+            setOrders(parsed);
             setOrdersCount(parsed.length);
+          } else {
+            setOrders([]);
+            setOrdersCount(0);
           }
+        } else {
+          setOrders([]);
+          setOrdersCount(0);
         }
       } catch (e) {
-        console.error("Error reading orders count:", e);
+        console.error("Error reading orders:", e);
       }
     };
     handleSyncOrders();
@@ -298,11 +356,12 @@ export default function App() {
   }, [categories, items, newlyAddedCategories]);
 
   // Track the active screen/tab: any of the spreadsheet, configuration, metrics, or financial tools
-  const [currentTab, setCurrentTab] = useState<'scan' | 'spreadsheet' | 'categories' | 'breakdown' | 'settings' | 'uniqueItems' | 'priceVariations' | 'uniqueInvoices' | 'fixed-expenses' | 'production-costs' | 'recipe-costing-sheets' | 'revenue' | 'staged-review' | 'integrations' | 'orders-detail'>('scan');
+  const [currentTab, setCurrentTab] = useState<'scan' | 'spreadsheet' | 'categories' | 'breakdown' | 'settings' | 'uniqueItems' | 'priceVariations' | 'uniqueInvoices' | 'fixed-expenses' | 'production-costs' | 'recipe-costing-sheets' | 'revenue' | 'staged-review' | 'integrations' | 'orders-detail' | 'client-control'>('scan');
   const [selectedIntegrationChannel, setSelectedIntegrationChannel] = useState<string | undefined>(undefined);
   const [selectedOrderDetailChannel, setSelectedOrderDetailChannel] = useState<string>("all");
   const [initialRevenueSubTab, setInitialRevenueSubTab] = useState<'store-config' | 'daily' | 'summary'>('summary');
   const [activeCostingTab, setActiveCostingTab] = useState<'fixed' | 'production' | 'recipe'>('fixed');
+  const [initialClientControlSubTab, setInitialClientControlSubTab] = useState<'directory' | 'prices' | 'delivery'>('directory');
 
   // Load and manage custom preferences
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -323,9 +382,9 @@ export default function App() {
   const [language, setLanguage] = useState<'en' | 'pt'>(() => {
     try {
       const val = safeStorage.getItem("grocery_language");
-      return (val === "en" || val === "pt") ? val : "en";
+      return (val === "en" || val === "pt") ? val : "pt";
     } catch {
-      return 'en';
+      return 'pt';
     }
   });
 
@@ -449,7 +508,7 @@ export default function App() {
         message: `Category "${catToDelete}" deleted. ${linkedItems.length} item(s) re-assigned to "${fallback}".`,
         type: "info"
       });
-      setTimeout(() => setNotification(null), 5000);
+      setTimeout(() => setNotification(null), 4000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, "batch_category_delete");
     }
@@ -513,7 +572,7 @@ export default function App() {
         message: `Category "${oldName}" successfully renamed to "${cleanedNewName}".`,
         type: "success"
       });
-      setTimeout(() => setNotification(null), 3500);
+      setTimeout(() => setNotification(null), 4000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, "batch_category_update");
     }
@@ -538,7 +597,7 @@ export default function App() {
         message: "Product category memory cleared.",
         type: "info"
       });
-      setTimeout(() => setNotification(null), 3000);
+      setTimeout(() => setNotification(null), 4000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, "configs/rules");
     }
@@ -804,7 +863,7 @@ export default function App() {
     }
 
     // Auto dismiss notification banner
-    setTimeout(() => setNotification(null), scanResult.quotaLimitActive ? 15000 : 8000);
+    setTimeout(() => setNotification(null), scanResult.quotaLimitActive ? 15000 : 4000);
   };
 
   // Staging Area Action & Persistence Functions
@@ -943,7 +1002,7 @@ export default function App() {
         message: "Spreadsheet cleared.",
         type: "info"
       });
-      setTimeout(() => setNotification(null), 3000);
+      setTimeout(() => setNotification(null), 4000);
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, "items_all");
     }
@@ -999,7 +1058,7 @@ export default function App() {
           invoicesCount
         }
       });
-      setTimeout(() => setNotification(null), 5000);
+      setTimeout(() => setNotification(null), 4000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, "batch_csv_import");
     }
@@ -1033,7 +1092,7 @@ export default function App() {
           invoicesCount
         }
       });
-      setTimeout(() => setNotification(null), 5000);
+      setTimeout(() => setNotification(null), 4000);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, "batch_demo_load");
     }
@@ -1114,16 +1173,40 @@ export default function App() {
     const currentMonthName = now.toLocaleString(language === 'pt' ? 'pt-BR' : 'en-US', { month: 'long' });
     const capitalizedCurrentMonth = currentMonthName.charAt(0).toUpperCase() + currentMonthName.slice(1);
 
+    // Calculate Monthly Total Revenue
+    // Month in format YYYY-MM
+    const currentMonthPref = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+    let monthlyTotalRevenue = 0;
+
+    // Filter matrices of current month
+    const currentMonthMatrices = appChannelMatrices.filter(m => m.month === currentMonthPref);
+
+    currentMonthMatrices.forEach((matrix) => {
+      const storeExists = appStores.length === 0 || appStores.some(s => s.id === matrix.storeId);
+      if (storeExists && matrix.salesData) {
+        Object.entries(matrix.salesData).forEach(([day, dayData]) => {
+          if (dayData && typeof dayData === "object") {
+            Object.entries(dayData).forEach(([channelKey, val]) => {
+              if (typeof val === "number" && channelKey.toLowerCase() !== "motoboy") {
+                monthlyTotalRevenue += val;
+              }
+            });
+          }
+        });
+      }
+    });
+
     return {
       grandTotal,
       monthlyTotalExpense,
+      monthlyTotalRevenue,
       topCategory: topCategoryName,
       topStore: topStoreName,
       categoriesRanked: sortedCategoriesList,
       monthlyCategoriesRanked: sortedMonthlyCategoriesList,
       currentMonthName: capitalizedCurrentMonth
     };
-  }, [items, language]);
+  }, [items, language, appStores, appChannelMatrices]);
 
   // --- Calculate 15-Day Price History ---
   const priceHistory15Days = useMemo(() => {
@@ -1220,7 +1303,7 @@ export default function App() {
     }`}>
       <div>
         {/* Primary Container */}
-        <main className={`${containerWidthClass} mx-auto px-4 sm:px-6 lg:px-8 py-8`}>
+        <main className={`${containerWidthClass} mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8`}>
           
           {/* Banner Alert Notification */}
           {notification && (
@@ -1274,7 +1357,14 @@ export default function App() {
             </div>
           )}
 
-          {selectedItemForDetail ? (
+          {!adminMode ? (
+            <StorefrontPortal 
+              language={language}
+              onAdminLoginClick={() => setIsLoginModalOpen(true)}
+            />
+          ) : (
+            <>
+              {selectedItemForDetail ? (
             <div className="animate-fade-in-up">
               <ProductDetailsScreen
                 productName={selectedItemForDetail}
@@ -1399,6 +1489,21 @@ export default function App() {
                           </button>
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Card 1.5: Monthly Total Revenue */}
+                  <div className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-3.5 shadow-2xs hover:shadow-xs transition-shadow flex-1">
+                    <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-amber-600 shrink-0">
+                      <Coins className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] sm:text-[10.5px] font-bold text-slate-400 uppercase tracking-wider leading-tight">
+                        {language === "pt" ? "Faturamento Total Mensal" : "Monthly Total Revenue"}
+                      </p>
+                      <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1 font-mono leading-none">
+                        {formatCurrency(calculatedStats.monthlyTotalRevenue)}
+                      </h3>
                     </div>
                   </div>
 
@@ -1745,6 +1850,16 @@ export default function App() {
                   language={language}
                   onManageCategories={() => setCurrentTab('categories')}
                 />
+
+                {/* Client Control Bento Card */}
+                <ClientControlBento
+                  orders={orders}
+                  language={language}
+                  onViewSubTab={(subTab) => {
+                    setInitialClientControlSubTab(subTab);
+                    setCurrentTab('client-control');
+                  }}
+                />
               </div>
           )}
 
@@ -1943,6 +2058,20 @@ export default function App() {
               }}
             />
           )}
+
+          {/* VIEW 16: CLIENT CONTROL DIRECTORY TABLE */}
+          {currentTab === 'client-control' && (
+            <ClientControlScreen
+              orders={orders}
+              language={language}
+              initialSubTab={initialClientControlSubTab}
+              onBack={() => {
+                setCurrentTab('scan');
+              }}
+            />
+          )}
+            </>
+          )}
             </>
           )}
         </main>
@@ -1950,10 +2079,10 @@ export default function App() {
 
       {/* ACCESS BUTTON AT THE BOTTOM OF THE PAGE */}
       <footer className="border-t border-slate-100 dark:border-slate-850 bg-white dark:bg-slate-900 py-6 mt-8 shadow-inner transition-colors">
-        <div className={`${containerWidthClass} mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4`}>
+        <div className={`${containerWidthClass} mx-auto px-4 flex flex-row items-center justify-between gap-2`}>
           
           {/* Settings Left-Aligned Footer Block */}
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               id="view-home-btn"
               onClick={() => {
@@ -1970,27 +2099,56 @@ export default function App() {
             >
               <Home className="w-4 h-4" />
             </button>
+            
+            {/* Admin Authentication Lock Button - Icon Only */}
             <button
-              id="view-settings-btn"
+              id="admin-auth-btn"
               onClick={() => {
-                setSelectedItemForDetail(null);
-                setCurrentTab('settings');
+                if (adminMode) {
+                  // Log out from admin mode safely
+                  setAdminMode(false);
+                  try {
+                    safeStorage.removeItem("adminModeAuthenticated");
+                  } catch {}
+                  setCurrentTab('scan');
+                  setSelectedItemForDetail(null);
+                } else {
+                  setIsLoginModalOpen(true);
+                }
               }}
-              className={`font-semibold text-xs px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
-                currentTab === 'settings'
-                  ? 'border-emerald-500 bg-emerald-50/20 text-emerald-600 dark:text-emerald-400 dark:bg-emerald-950/20'
-                  : 'border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-slate-50 dark:bg-slate-850'
+              className={`font-semibold text-xs p-2.5 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                adminMode
+                  ? 'border-emerald-500 bg-emerald-50/20 text-emerald-600 dark:text-emerald-400 dark:bg-emerald-950/20 shadow-inner'
+                  : 'border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-850'
               }`}
+              title={adminMode ? (language === 'pt' ? 'Sair do Painel Admin' : 'Exit Admin View') : (language === 'pt' ? 'Acesso Administrativo' : 'Administrator Sign In')}
+              aria-label="Admin Auth"
             >
-              <Settings className="w-4 h-4" />
-              {t.settings}
+              {adminMode ? <Unlock className="w-4 h-4 text-emerald-500" /> : <Lock className="w-4 h-4" />}
             </button>
-            <div className="text-xs text-slate-400 dark:text-slate-500">
-              Total Database: <strong className="text-slate-700 dark:text-slate-300">{items.length} {language === 'pt' ? 'itens' : 'items'}</strong>
-            </div>
+
+            {/* Gear Configuration Button for Language Setting */}
+            {adminMode && (
+              <button
+                id="admin-settings-btn"
+                onClick={() => {
+                  setSelectedItemForDetail(null);
+                  setCurrentTab('settings');
+                }}
+                className={`font-semibold text-xs p-2.5 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                  currentTab === 'settings'
+                    ? 'border-emerald-500 bg-emerald-50/20 text-emerald-600 dark:text-emerald-400 dark:bg-emerald-950/20 shadow-inner'
+                    : 'border-slate-100 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-slate-50 dark:bg-slate-850'
+                }`}
+                title={language === 'pt' ? 'Configurações de Idioma' : 'Language Settings'}
+                aria-label="Admin Settings"
+              >
+                <Settings className="w-4.5 h-4.5" />
+              </button>
+            )}
           </div>
           
-          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               id="back-to-top-btn"
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
@@ -2001,47 +2159,114 @@ export default function App() {
               <ArrowUp className="w-4 h-4 text-slate-500 group-hover:-translate-y-0.5 transition-transform" />
             </button>
 
-            {!selectedItemForDetail && currentTab !== 'scan' && (
-              <button
-                id="view-scan-btn"
-                onClick={() => setCurrentTab('scan')}
-                className="w-full sm:w-auto bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-200 dark:border-slate-750"
-              >
-                <Receipt className="w-4 h-4 text-slate-500" />
-                {t.scanReceipt}
-              </button>
-            )}
-
-            {!selectedItemForDetail && currentTab !== 'spreadsheet' && (
-              <button
-                id="view-table-btn"
-                onClick={() => {
-                  setSelectedItemForDetail(null);
-                  setCurrentTab('spreadsheet');
-                }}
-                className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md shadow-emerald-500/10"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                {t.openSpreadsheet} ({items.length})
-              </button>
-            )}
-
-            {stagedItems.length > 0 && currentTab !== 'staged-review' && (
+            {adminMode && stagedItems.length > 0 && (
               <button
                 id="view-staged-btn"
                 onClick={() => {
                   setSelectedItemForDetail(null);
                   setCurrentTab('staged-review');
                 }}
-                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md shadow-amber-600/10 animate-pulse"
+                className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[10px] sm:text-xs px-2.5 sm:px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md shadow-amber-600/10 animate-pulse"
               >
-                <FileSpreadsheet className="w-4 h-4 text-white" />
-                {language === 'pt' ? 'Revisar Pendentes' : 'Review Staged'} ({stagedItems.length})
+                <FileSpreadsheet className="w-3.5 h-3.5 text-white" />
+                <span className="hidden xs:inline">{language === 'pt' ? 'Revisar' : 'Review'} ({stagedItems.length})</span>
+                <span className="xs:hidden inline">({stagedItems.length})</span>
               </button>
             )}
           </div>
         </div>
       </footer>
+
+      {/* ADMIN LOGIN DIALOG MODAL */}
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 p-6 sm:p-8 w-full max-w-sm shadow-2xl relative animate-fade-in-up">
+            <button
+              onClick={() => {
+                setIsLoginModalOpen(false);
+                setLoginUser("");
+                setLoginPass("");
+                setLoginError("");
+              }}
+              className="absolute top-4 right-4 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="text-center space-y-2 mb-6">
+              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/25 rounded-2xl flex items-center justify-center mx-auto text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/40">
+                <Lock className="w-5 h-5" />
+              </div>
+              <h3 className="font-extrabold text-slate-950 dark:text-white text-base tracking-tight">
+                {language === "pt" ? "Login do Administrador" : "Administrator Sign In"}
+              </h3>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                {language === "pt" ? "Digite suas credenciais de acesso restrito." : "Enter restricted panel access credentials."}
+              </p>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (loginUser === "admin" && loginPass === "admin") {
+                  setAdminMode(true);
+                  try {
+                    safeStorage.setItem("adminModeAuthenticated", "true");
+                  } catch {}
+                  setIsLoginModalOpen(false);
+                  setLoginUser("");
+                  setLoginPass("");
+                  setLoginError("");
+                } else {
+                  setLoginError(language === "pt" ? "Usuário ou senha incorretos." : "Incorrect username or password.");
+                }
+              }} 
+              className="space-y-4 text-xs text-slate-700 dark:text-slate-300"
+            >
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  {language === "pt" ? "Usuário" : "Username"}
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="admin"
+                  value={loginUser}
+                  onChange={(e) => setLoginUser(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl block w-full p-2.5 focus:outline-hidden focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  {language === "pt" ? "Senha" : "Password"}
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••"
+                  value={loginPass}
+                  onChange={(e) => setLoginPass(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl block w-full p-2.5 focus:outline-hidden focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-mono"
+                />
+              </div>
+
+              {loginError && (
+                <p className="text-[10px] text-rose-500 font-bold text-center mt-1">
+                  {loginError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                className="w-full bg-slate-900 dark:bg-indigo-600 hover:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-extrabold py-3 rounded-xl cursor-pointer shadow-md shadow-slate-950/15 tracking-wider uppercase transition-all mt-2"
+              >
+                {language === "pt" ? "Entrar" : "Authenticate"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

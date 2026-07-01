@@ -102,6 +102,21 @@ service cloud.firestore {
         && data.siteTax is number;
     }
 
+    function isValidStorefrontPrices(data) {
+      return data.keys().hasAll(['prices'])
+        && data.prices is map;
+    }
+
+    function isValidDeliveryFees(data) {
+      return data.keys().hasAll(['fees'])
+        && data.fees is map;
+    }
+
+    function isValidCategoriesOrder(data) {
+      return data.keys().hasAll(['order'])
+        && data.order is list;
+    }
+
     function isValidSalesLog(data) {
       return data.keys().hasAll(['id', 'saleDate', 'recipeId', 'recipeName', 'portionsSold', 'channelName', 'taxApplied', 'salePrice', 'totalPrice', 'rawCost', 'netProfit', 'createdAt'])
         && data.keys().size() <= 12
@@ -157,7 +172,10 @@ service cloud.firestore {
       allow write: if (settingId == "production_costs" && isValidProductionCosts(request.resource.data))
                    || (settingId == "inventory" && isValidInventorySettings(request.resource.data))
                    || (settingId == "store_config" && isValidStoreConfig(request.resource.data))
-                   || (settingId == "volume_and_app_tax" && isValidVolumeAndAppTax(request.resource.data));
+                   || (settingId == "volume_and_app_tax" && isValidVolumeAndAppTax(request.resource.data))
+                   || (settingId == "storefront_prices" && isValidStorefrontPrices(request.resource.data))
+                   || (settingId == "delivery_fees" && isValidDeliveryFees(request.resource.data))
+                   || (settingId == "categories_order" && isValidCategoriesOrder(request.resource.data));
     }
 
     match /sales_logs/{saleId} {
@@ -171,6 +189,10 @@ service cloud.firestore {
     }
 
     match /channel_matrix/{matrixId} {
+      allow read, write: if true;
+    }
+
+    match /storefront_users/{userId} {
       allow read, write: if true;
     }
   }

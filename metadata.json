@@ -1,6 +1,6 @@
 {
   "name": "ereKitchen Scanner",
-  "description": "Control purchased items, quantities, prices, spendings, revenues and product sheets.",
+  "description": "Control purchased items, quantities, prices, spendings, revenues, product sheets, storefront orders, and client controls.",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

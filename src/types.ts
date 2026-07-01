@@ -16,6 +16,10 @@ export interface Order {
   type?: "delivery" | "pickup" | "dine_in";
   orderTiming?: string;
   scheduledDateTimeStart?: string;
+  phone?: string;
+  address?: string;
+  paymentMethod?: string;
+  observations?: string;
 }
 
 export interface ReceiptItem {

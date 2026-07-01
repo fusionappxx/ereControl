@@ -307,9 +307,74 @@
         }
       },
       "required": ["monthlyVolume", "amoTax", "ifoodTax", "tax99Food", "siteTax"]
+    },
+    "storefrontPrices": {
+      "title": "StorefrontPrices",
+      "description": "Storefront retail pricing table overrides",
+      "type": "object",
+      "properties": {
+        "prices": {
+          "type": "object"
+        }
+      },
+      "required": ["prices"]
+    },
+    "deliveryFees": {
+      "title": "DeliveryFees",
+      "description": "Store localized neighborhood delivery fees",
+      "type": "object",
+      "properties": {
+        "fees": {
+          "type": "object"
+        }
+      },
+      "required": ["fees"]
+    },
+    "categoriesOrder": {
+      "title": "CategoriesOrder",
+      "description": "Recipe display category ordering configuration",
+      "type": "object",
+      "properties": {
+        "order": {
+          "type": "array"
+        }
+      },
+      "required": ["order"]
+    },
+    "storefrontUser": {
+      "title": "StorefrontUser",
+      "description": "Registered customer storefront account",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "phone", "password"]
     }
   },
   "firestore": {
+    "/settings/categories_order": {
+      "schema": "categoriesOrder",
+      "description": "Recipe display category ordering configuration"
+    },
+    "/settings/storefront_prices": {
+      "schema": "storefrontPrices",
+      "description": "Specific storefront overriding prices by recipe ID"
+    },
+    "/settings/delivery_fees": {
+      "schema": "deliveryFees",
+      "description": "Store localized neighborhood delivery fees"
+    },
     "/settings/volume_and_app_tax": {
       "schema": "volumeAndAppTax",
       "description": "Expected monthly order volume divisor and delivery commission rates"
@@ -357,6 +422,10 @@
     "/inventory_reports/{reportId}": {
       "schema": "inventoryReport",
       "description": "Saved historic stock check sheets"
+    },
+    "/storefront_users/{userId}": {
+      "schema": "storefrontUser",
+      "description": "Storefront users data"
     }
   }
 }

@@ -48,6 +48,54 @@ import {
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
+const compressBase64Image = (base64Str: string, maxWidth = 400, maxHeight = 400, quality = 0.7): Promise<string> => {
+  return new Promise((resolve) => {
+    if (!base64Str || !base64Str.startsWith("data:image")) {
+      resolve(base64Str);
+      return;
+    }
+    // If it's already quite small (e.g. under 100KB), no need to compress it
+    if (base64Str.length < 150000) {
+      resolve(base64Str);
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height *= maxWidth / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width *= maxHeight / height;
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL("image/jpeg", quality);
+        resolve(compressed);
+      } else {
+        resolve(base64Str);
+      }
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+    img.src = base64Str;
+  });
+};
+
 interface ProductDetailsScreenProps {
   productName: string;
   items: ReceiptItem[];
@@ -215,9 +263,10 @@ export default function ProductDetailsScreen({
     if (!file) return;
     
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64String = reader.result as string;
-      const updated = { ...customPhotos, [productName.trim().toLowerCase()]: base64String };
+      const compressedBase64 = await compressBase64Image(base64String);
+      const updated = { ...customPhotos, [productName.trim().toLowerCase()]: compressedBase64 };
       setCustomPhotos(updated);
       try {
         safeStorage.setItem("grocery_custom_photos", JSON.stringify(updated));
